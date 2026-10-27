@@ -1,0 +1,22 @@
+# name	repo	ref	db	assets (auto | no | cmd:<shell>)	kind	notes
+laravel	laravel/laravel	13.x	sqlite	yes	general	skeleton baseline
+coolify	coollabsio/coolify	main	pgsql	cmd:$LN php artisan db:seed --force && $LN npm install --no-audit --no-fund && $LN npm run build	general	pgsql + redis + horizon + reverb; needs its seeders (InstanceSettings)
+bagisto	bagisto/bagisto	2.5	mysql	auto	general	mysql only, octane, many ext-*
+monica	monicahq/monica	main	sqlite	auto	general	inertia + pulse
+krayin	krayin/laravel-crm	2.2	mysql	auto	general	mysql, reverb
+bookstack	BookStackApp/BookStack	development	mysql	auto	general	mysql only
+koel	koel/koel	master	sqlite	cmd:$LN npx -y pnpm@10 install && $LN npx -y pnpm@10 run build	general	vue spa, reverb, pnpm catalogs
+pixelfed	pixelfed/pixelfed	dev	pgsql	auto	general	ext-redis, horizon, php ^8.4|^8.5
+pterodactyl	pterodactyl/panel	1.0-develop	mysql	cmd:$LN npm install --legacy-peer-deps --no-audit --no-fund && $LN npm run build	general	mysql + redis
+crater	crater-invoice-inc/crater	master	sqlite	cmd:$LN npm install --legacy-peer-deps --no-audit --no-fund && $LN npm run build	general	laravel 8, php ^7.4|^8.0
+firefly	firefly-iii/firefly-iii	main	sqlite	cmd:$LN npm --prefix resources/assets/v3 install --no-audit --no-fund && $LN npm --prefix resources/assets/v3 run build	general	php >=8.5, assets in a subdir
+akaunting	akaunting/akaunting	master	sqlite	auto	general	laravel 10, livewire 3
+polr	cydrobolt/polr	master	sqlite	auto	edge	lumen: must be rejected
+flarum	flarum/flarum	2.x	sqlite	auto	edge	not laravel: must be rejected
+freescout	freescout-help-desk/freescout	dist	mysql	auto	edge	laravel 5.5 / php 7.1
+fdemo	filamentphp/demo	5.x	sqlite	yes	filament	filament 5 demo
+aureus	aureuserp/aureuserp	master	mysql	auto	filament	filament 5 erp (mysql/pgsql only)
+speedtest	alexjustesen/speedtest-tracker	1.x	sqlite	auto	filament	filament 5, scheduler
+solidtime	solidtime-io/solidtime	main	pgsql	auto	filament	filament admin + inertia, php 8.3.*
+relaticle	relaticle/relaticle	main	pgsql	auto	filament	filament 5, horizon, reverb, php ^8.5
+laravelio	laravelio/laravel.io	main	mysql	auto	filament	filament 5, php 8.5.* (migrations need mysql)

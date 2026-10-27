@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "php/**", ".github/workflows/php.yml"]
+  pull_request:
+  workflow_call: # reused by release.yml before publishing
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        run: make ui
+
+      - name: Vet and test
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
+          go vet ./...
+          go test ./...
+
+      - name: Build
+        run: make go
+
+      # End to end on a machine with no PHP managed by Laranest: the daemon must
+      # download its own PHP, run FPM as a systemd user unit and serve the app.
+      - name: Smoke test
+        env:
+          GH_TOKEN: ${{ github.token }} # the PHP builds release may be private
+        run: |
+          set -euo pipefail
+          sudo loginctl enable-linger "$USER"
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+          for i in $(seq 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+          timeout 30 systemctl --user is-system-running --wait || true
+
+          root=$RUNNER_TEMP/smoke
+          export XDG_CONFIG_HOME=$root/config XDG_STATE_HOME=$root/state XDG_DATA_HOME=$root/data
+          mkdir -p "$XDG_CONFIG_HOME/laranest" "$root/app/public"
+          echo '{"panel_addr":"127.0.0.1:9150","http_port":8099,"https_port":8443,"domain":"localhost"}' > "$XDG_CONFIG_HOME/laranest/config.json"
+
+          # Minimal project that detection accepts as Laravel.
+          app=$root/app
+          echo '{"require":{"php":"^8.4","laravel/framework":"^12.0"}}' > "$app/composer.json"
+          touch "$app/artisan"
+          echo 'APP_KEY=base64:smoke' > "$app/.env"
+          echo '<?php echo "ok ", PHP_VERSION, " intl=", extension_loaded("intl") ? "yes" : "no";' > "$app/public/index.php"
+
+          ./bin/laranest serve > "$root/daemon.log" 2>&1 &
+          for i in $(seq 30); do curl -sf localhost:9150/api/health && break; sleep 1; done
+
+          curl -sf -X POST localhost:9150/api/apps -d "{\"path\":\"$app\",\"id\":\"smoke\",\"php\":\"8.4\",\"start\":true,
+            \"processes\":{\"queue\":false,\"horizon\":false,\"scheduler\":false,\"reverb\":false,\"vite\":false}}" | tee "$root/add.json"
+          echo
+
+          # New apps are HTTPS by default: trust Laranest's CA like a native
+          # Ubuntu user would (system store + NSS for Chrome), then browse
+          # without any --cacert / --ignore-certificate-errors.
+          sudo apt-get install -y -qq libnss3-tools > /dev/null
+          mkdir -p "$HOME/.pki/nssdb" && certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password
+          for i in $(seq 30); do [ -f "$XDG_STATE_HOME/laranest/caddy/pki/authorities/local/root.crt" ] && break; sleep 1; done
+          ./bin/laranest trust
+
+          body=""
+          for i in $(seq 60); do
+            body=$(curl -s https://smoke.localhost:8443/ || true)
+            case "$body" in ok*) break ;; esac
+            sleep 2
+          done
+          echo "https response: $body"
+          case "$body" in "ok 8.4."*" intl=yes") ;; *)
+            cat "$root/daemon.log"
+            systemctl --user status 'laranest-*' --no-pager || true
+            exit 1 ;;
+          esac
+          redirect=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://smoke.localhost:8099/x)
+          echo "http: $redirect"
+          [ "$redirect" = "308 https://smoke.localhost:8443/x" ]
+
+          if command -v google-chrome > /dev/null; then
+            page=$(google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom https://smoke.localhost:8443/ 2>/dev/null)
+            echo "chrome: $page" | head -c 300; echo
+            grep -q "ok 8.4." <<<"$page" || { echo "Chrome did not trust the certificate"; exit 1; }
+          fi
+
+          ./bin/laranest php:list
+          curl -sf -X POST localhost:9150/api/apps/smoke/stop > /dev/null
+
+  # Native Windows on every push: unit tests (including the process
+  # supervisor) and the build. The full end-to-end regression is slower (~15
+  # min) and runs before each release and on demand (windows-e2e.yml).
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        shell: bash
+        run: cd web && npm ci && npm run build
+
+      - name: Build
+        shell: bash
+        run: |
+          go build -trimpath -ldflags "-s -w -H windowsgui" -o internal/service/laranestw.exe ./cmd/laranestw
+          go build -trimpath -ldflags "-s -w" -o bin/laranest.exe ./cmd/laranest
+
+      - name: Vet and test
+        shell: bash
+        run: |
+          go vet ./...
+          go test ./...

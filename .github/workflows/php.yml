@@ -1,0 +1,200 @@
+# Builds Laranest's static PHP (cli + fpm) with static-php-cli and publishes
+# them to the "php" release, which `laranest` downloads from (no root needed).
+#
+# glibc builds (spc-gnu-docker, CentOS 7 / glibc 2.17): they run on any modern
+# distro and, unlike musl ones, can load extra extensions with dl()/php.ini.
+#
+# Incremental: only the minors whose latest patch on php.net differs from the
+# published one are rebuilt and merged into the existing manifest. Changing
+# php/extensions.txt (its hash is stored in the manifest), or running it by
+# hand with "force", rebuilds everything.
+name: PHP builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild every version even if it is up to date
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - php/extensions.txt
+      - .github/workflows/php.yml
+  schedule:
+    - cron: "0 6 * * 1" # weekly
+
+env:
+  SPC_VERSION: "2.8.5"
+  RELEASE_TAG: php
+  MINORS: "8.1 8.2 8.3 8.4 8.5"
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: php
+
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force == true }}
+        run: |
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p manifest.json -O current.json 2>/dev/null ||
+            echo '{"php":[]}' > current.json
+          ext_sha=$(sha256sum php/extensions.txt | cut -d' ' -f1)
+          if [ "$(jq -r '.extensions_sha // ""' current.json)" != "$ext_sha" ]; then
+            echo "extension list changed: rebuilding everything"
+            FORCE=true
+          fi
+          include='[]'
+          for minor in $MINORS; do
+            latest=$(curl -fsSL "https://www.php.net/releases/index.php?json&max=1&version=$minor" | jq -r 'keys[0]')
+            for arch in x86_64 aarch64; do
+              published=$(jq -r --arg m "$minor." --arg a "$arch" \
+                '[.php[] | select(.arch == $a and (.version | startswith($m)))][0].version // ""' current.json)
+              if [ "$FORCE" = "true" ] || [ "$published" != "$latest" ]; then
+                runner=ubuntu-24.04; [ "$arch" = aarch64 ] && runner=ubuntu-24.04-arm
+                echo "build $minor/$arch: ${published:-none} -> $latest"
+                include=$(jq -c --arg p "$minor" --arg a "$arch" --arg r "$runner" '. + [{php: $p, arch: $a, runner: $r}]' <<<"$include")
+              else
+                echo "skip  $minor/$arch: $published is up to date"
+              fi
+            done
+          done
+          echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
+          echo "any=$([ "$include" != "[]" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    name: PHP ${{ matrix.php }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: php
+
+      - name: Checkout static-php-cli ${{ env.SPC_VERSION }}
+        uses: actions/checkout@v4
+        with:
+          repository: crazywhalecc/static-php-cli
+          ref: ${{ env.SPC_VERSION }}
+          path: spc
+
+      - name: Cache sources
+        uses: actions/cache@v4
+        with:
+          path: spc/downloads
+          key: spc-${{ env.SPC_VERSION }}-${{ matrix.arch }}-php${{ matrix.php }}-${{ hashFiles('php/extensions.txt') }}
+
+      - name: Download sources
+        working-directory: spc
+        run: |
+          ./bin/spc-gnu-docker download \
+            --with-php=${{ matrix.php }} \
+            --for-extensions="$(cat ../php/extensions.txt)" \
+            --prefer-pre-built \
+            --ignore-cache-sources=php-src
+
+      - name: Build
+        working-directory: spc
+        run: ./bin/spc-gnu-docker build "$(cat ../php/extensions.txt)" --build-cli --build-fpm
+
+      - name: Smoke test
+        run: |
+          bin=spc/buildroot/bin
+          $bin/php -v
+          $bin/php-fpm -v
+          for ext in intl opcache pdo_sqlite pdo_pgsql pdo_mysql redis sodium mbstring; do
+            $bin/php -m | grep -qix -e "$ext" -e "zend $ext" || { echo "missing $ext"; exit 1; }
+          done
+
+      - name: Package
+        id: pkg
+        run: |
+          version=$(spc/buildroot/bin/php -r 'echo PHP_VERSION;')
+          name="php-${version}-linux-${{ matrix.arch }}.tar.gz"
+          sudo chown -R "$(id -u)" spc/buildroot
+          tar -czf "$name" -C spc/buildroot/bin php php-fpm
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          printf '{"version":"%s","arch":"%s","file":"%s","sha256":"%s"}\n' \
+            "$version" "${{ matrix.arch }}" "$name" "$(sha256sum "$name" | cut -d' ' -f1)" > "$name.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: php-${{ matrix.php }}-${{ matrix.arch }}
+          path: |
+            ${{ steps.pkg.outputs.name }}
+            ${{ steps.pkg.outputs.name }}.json
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.php }}-${{ matrix.arch }}
+          path: spc/log/*.log
+
+  publish:
+    needs: [plan, build]
+    # Publish whatever built: one broken version shouldn't block the others.
+    if: always() && !cancelled() && needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: php
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: php-*
+          path: dist
+          merge-multiple: true
+
+      - name: Merge manifest
+        run: |
+          ls dist/*.json >/dev/null 2>&1 || { echo "nothing was built"; exit 1; }
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p manifest.json -O current.json 2>/dev/null ||
+            echo '{"php":[]}' > current.json
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+          # New builds replace the published entry of the same minor + arch; the rest is kept.
+          jq -n --arg base "$base" --arg built "$(date -u +%FT%TZ)" \
+            --arg ext "$(sha256sum php/extensions.txt | cut -d' ' -f1)" \
+            --slurpfile cur current.json --slurpfile new <(cat dist/*.json | jq -s .) '
+            def minor: .version | split(".")[0:2] | join(".");
+            ($new[0] | map({version, arch, sha256, url: ($base + "/" + .file)})) as $n |
+            {
+              built: $built,
+              extensions_sha: $ext,
+              php: ([$cur[0].php[] | select(. as $o | $n | any(.arch == $o.arch and minor == ($o | minor)) | not)] + $n
+                    | sort_by((.version | split(".") | map(tonumber)), .arch))
+            }' > dist/manifest.json
+          cat dist/manifest.json
+
+      - name: Publish release
+        run: |
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "PHP builds" \
+              --notes "Static PHP (cli + fpm) for Laranest, built with static-php-cli. Extensions: see php/extensions.txt."
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber dist/*.tar.gz dist/manifest.json
+          # Drop assets no longer referenced by the manifest (older patch versions).
+          keep=$(jq -r '.php[].url | split("/") | last' dist/manifest.json; echo manifest.json)
+          for asset in $(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name'); do
+            grep -qxF "$asset" <<<"$keep" || gh release delete-asset "$RELEASE_TAG" "$asset" -R "$GITHUB_REPOSITORY" -y
+          done

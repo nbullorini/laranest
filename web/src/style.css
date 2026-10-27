@@ -1,0 +1,32 @@
+:root {
+  --brand: #f05340;
+  --surface: #ffffff;
+  --border: #e4e4ea;
+  --chip: #f1f1f4;
+  --muted: #6b6b76;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #18181c;
+    --border: #2c2c32;
+    --chip: #26262c;
+    --muted: #9a9aa6;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.content { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.grow { flex: 1; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 0.9rem; font-weight: 500; }
+.section-title { font-weight: 600; margin-bottom: 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.mono, code { font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace; }
+.clickable { cursor: pointer; user-select: none; }
