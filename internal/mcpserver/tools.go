@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -82,6 +84,14 @@ type logsInput struct {
 	ID      string `json:"id" jsonschema:"the app's id"`
 	Process string `json:"process" jsonschema:"web, queue, horizon, scheduler, reverb, vite or a custom process name"`
 	Lines   int    `json:"lines,omitempty" jsonschema:"how many of the last lines (default 100, max 500)"`
+}
+
+type laravelLogInput struct {
+	ID     string `json:"id" jsonschema:"the app's id"`
+	Level  string `json:"level,omitempty" jsonschema:"minimum level: debug, info, notice, warning, error (default), critical, alert, emergency"`
+	Search string `json:"search,omitempty" jsonschema:"only entries containing this text (case-insensitive)"`
+	File   string `json:"file,omitempty" jsonschema:"a file in storage/logs such as laravel-2026-10-28.log; default: the most recent"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"how many of the newest entries (default 10, max 100)"`
 }
 
 type fixInput struct {
@@ -334,6 +344,50 @@ func register(s *mcp.Server, c *client) {
 				return textResult("No output yet.")
 			}
 			return textResult(joinLines(lines))
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "get_laravel_log", Annotations: read,
+		Description: "The newest entries of the app's Laravel log (storage/logs), newest first, with the exception and stack trace of each: where errors from requests, jobs and commands end up. Defaults to errors and worse."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in laravelLogInput) (*mcp.CallToolResult, any, error) {
+			level, limit := in.Level, in.Limit
+			if level == "" {
+				level = "error"
+			}
+			if limit <= 0 {
+				limit = 10
+			}
+			q := url.Values{"level": {level}, "q": {in.Search}, "file": {in.File}, "limit": {strconv.Itoa(min(limit, 100))}}
+			data, err := c.do(ctx, http.MethodGet, "/apps/"+url.PathEscape(in.ID)+"/laravel-log?"+q.Encode(), nil)
+			if err != nil {
+				return result(nil, err)
+			}
+			var log struct {
+				File    string `json:"file"`
+				Entries []struct {
+					Time, Level, Message, Details string
+				} `json:"entries"`
+			}
+			if err := json.Unmarshal(data, &log); err != nil {
+				return nil, nil, err
+			}
+			if log.File == "" {
+				return textResult("The app has no log files in storage/logs yet.")
+			}
+			if len(log.Entries) == 0 {
+				return textResult(fmt.Sprintf("No %s-or-worse entries in %s.", level, log.File))
+			}
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s, newest first:\n", log.File)
+			for _, e := range log.Entries {
+				fmt.Fprintf(&b, "\n[%s] %s: %s\n", e.Time, strings.ToUpper(e.Level), e.Message)
+				if lines := strings.Split(e.Details, "\n"); e.Details != "" {
+					if len(lines) > 30 { // the top of the stack trace is what matters
+						lines = append(lines[:30], fmt.Sprintf("… %d more lines", len(lines)-30))
+					}
+					b.WriteString(strings.Join(lines, "\n") + "\n")
+				}
+			}
+			return textResult(b.String())
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "php_versions", Annotations: read,

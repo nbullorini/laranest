@@ -176,7 +176,8 @@ binary, and then:
 Context Protocol on stdio for AI clients. It is a thin client of the daemon's
 HTTP API, so assistants get the panel's features with its validations: tools
 to list, inspect, add, update (advanced settings included), start, stop,
-restart and remove apps, read logs, set `.env` values, apply a warning's fix,
+restart and remove apps, read the processes' output and the Laravel log
+(`storage/logs`, parsed by level), set `.env` values, apply a warning's fix,
 run php/composer/npm/npx/node commands and manage PHP versions. Tools carry
 read-only/destructive hints so clients can ask before the risky ones.
 
