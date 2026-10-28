@@ -90,6 +90,7 @@ export interface AppView {
   /** What each built-in process runs unless overridden. */
   default_commands: Record<string, string>
   dumps?: boolean
+  xdebug?: boolean
   /** Public address while the app is shared through a tunnel. */
   share_url?: string
 }
@@ -248,7 +249,7 @@ export const api = {
     request<AppResult>('POST', '/apps', req),
   update: (id: string, patch: {
     id?: string; group?: string; https?: boolean; php?: string; processes?: Processes
-    commands?: Record<string, string>; custom?: CustomProcess[]; web_mode?: string; dumps?: boolean
+    commands?: Record<string, string>; custom?: CustomProcess[]; web_mode?: string; dumps?: boolean; xdebug?: boolean
   }) =>
     request<AppResult>('PATCH', `/apps/${id}`, patch),
   remove: (id: string) => request<void>('DELETE', `/apps/${id}`),

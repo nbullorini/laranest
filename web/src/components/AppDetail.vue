@@ -39,6 +39,7 @@ const editProcs = ref<Processes | null>(null)
 const editCommands = ref<Record<string, string>>({})
 const editCustom = ref<CustomProcess[]>([])
 const editWebMode = ref('')
+const editXdebug = ref(false)
 watch(() => props.app?.id, () => {
   if (!props.app) return
   editId.value = props.app.id
@@ -49,6 +50,7 @@ watch(() => props.app?.id, () => {
   editCommands.value = { ...(props.app.commands ?? {}) }
   editCustom.value = (props.app.custom ?? []).map((c) => ({ ...c }))
   editWebMode.value = props.app.web_mode ?? ''
+  editXdebug.value = !!props.app.xdebug
   if (!props.app.procs.some((p) => p.name === logProcess.value)) logProcess.value = 'web'
 }, { immediate: true })
 
@@ -59,7 +61,8 @@ const advancedChanged = computed(() => !!props.app && (
   editWebMode.value !== (props.app.web_mode ?? '')))
 const restartNeeded = computed(() => !!props.app && (
   editId.value !== props.app.id || editPhp.value !== props.app.php ||
-  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes) || advancedChanged.value))
+  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes) || advancedChanged.value ||
+  editXdebug.value !== !!props.app.xdebug))
 const customized = computed(() => !!props.app && (
   Object.keys(props.app.commands ?? {}).length > 0 || (props.app.custom ?? []).length > 0 || !!props.app.web_mode))
 const dirty = computed(() => restartNeeded.value ||
@@ -156,7 +159,7 @@ function save() {
   run(() => api.update(id, restartNeeded.value
     ? {
         id: editId.value !== id ? editId.value : undefined, group: editGroup.value, https: editHttps.value, php: editPhp.value,
-        processes: editProcs.value ?? undefined,
+        processes: editProcs.value ?? undefined, xdebug: editXdebug.value !== !!props.app?.xdebug ? editXdebug.value : undefined,
         ...(advancedChanged.value ? { commands: editCommands.value, custom: editCustom.value, web_mode: editWebMode.value } : {}),
       }
     : { group: editGroup.value, https: editHttps.value }), 'Changes saved')
@@ -315,6 +318,20 @@ function showLogs(process: string) {
                     {{ editHttps ? 'With the local certificate (http redirects to https)' : 'HTTP only' }}
                   </span>
                 </div>
+              </div>
+              <div class="field">
+                <span>Xdebug</span>
+                <div class="row">
+                  <NSwitch v-model:value="editXdebug" :disabled="app.web_mode === 'port'" />
+                  <span class="clickable small muted" @click="app.web_mode !== 'port' && (editXdebug = !editXdebug)">
+                    {{ app.web_mode === 'port' ? 'Not with a custom web command'
+                      : editXdebug ? 'Step debugging on a trigger, IDE on port 9003' : 'Off' }}
+                  </span>
+                </div>
+                <small v-if="editXdebug && !app.xdebug" class="muted">
+                  Start a session with your browser's Xdebug helper extension (or XDEBUG_TRIGGER) while your IDE listens on
+                  port 9003. Only the web requests load it.
+                </small>
               </div>
             </div>
             <div>

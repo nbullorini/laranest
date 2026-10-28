@@ -154,9 +154,12 @@ jobs:
       - name: Download sources
         working-directory: spc
         run: |
+          # Xdebug's latest stable from PECL (left alone, it would pick a pre-release).
+          xdebug=$(curl -fsSL https://pecl.php.net/rest/r/xdebug/stable.txt)
           ./bin/spc-gnu-docker download \
             --with-php=${{ matrix.php }} \
             --for-extensions="$(cat ../php/extensions.txt),xdebug" \
+            --custom-url "xdebug:https://pecl.php.net/get/xdebug-$xdebug.tgz" \
             --prefer-pre-built \
             --ignore-cache-sources=php-src
 
@@ -174,7 +177,7 @@ jobs:
           done
           xdebug=$(find spc/buildroot -name xdebug.so | head -1)
           [ -n "$xdebug" ] || { echo "xdebug.so was not built"; exit 1; }
-          $bin/php -d zend_extension="$PWD/$xdebug" -v | grep -i "with Xdebug"
+          $bin/php -d zend_extension="$PWD/$xdebug" -v | grep -i "with Xdebug v3\.[0-9]*\.[0-9]*,"
           $bin/php-fpm -d zend_extension="$PWD/$xdebug" -m | grep -ix xdebug
 
       - name: Package
