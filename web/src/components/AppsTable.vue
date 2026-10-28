@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { NButton, NDataTable, NIcon, type DataTableColumns } from 'naive-ui'
-import { Play, Stop, Warning } from '@vicons/ionicons5'
+import { Play, Refresh, Stop, Warning } from '@vicons/ionicons5'
 import StateTag from './StateTag.vue'
 import { processLabels, type AppView } from '../api'
 
 const props = defineProps<{ apps: AppView[]; busy: string | null }>()
-const emit = defineEmits<{ open: [id: string]; toggle: [app: AppView]; group: [apps: AppView[], start: boolean] }>()
+const emit = defineEmits<{ open: [id: string]; toggle: [app: AppView]; restart: [app: AppView]; group: [apps: AppView[], start: boolean] }>()
 
 const NO_GROUP = 'No group'
 
@@ -66,8 +66,8 @@ watch(collapsed, (v) => {
 const problems = (app: AppView) => app.warnings.filter((w) => w.level !== 'info').length
 const isUp = (app: AppView) => app.state !== 'stopped'
 
-function iconButton(icon: typeof Play, title: string, loading: boolean, onClick: () => void) {
-  return h(NButton, { quaternary: true, circle: true, size: 'small', title, loading,
+function iconButton(icon: typeof Play, title: string, loading: boolean, onClick: () => void, disabled = false) {
+  return h(NButton, { quaternary: true, circle: true, size: 'small', title, loading, disabled,
     onClick: (e: MouseEvent) => { e.stopPropagation(); onClick() } },
   { icon: () => h(NIcon, { component: icon }) })
 }
@@ -129,7 +129,10 @@ const columns = computed<DataTableColumns<Row>>(() => [
           () => emit('group', row.apps, !allUp))
       }
       const up = isUp(row.app)
-      return iconButton(up ? Stop : Play, up ? 'Stop' : 'Start', props.busy === row.app.id, () => emit('toggle', row.app))
+      return h('div', { class: 'row-actions' }, [
+        iconButton(up ? Stop : Play, up ? 'Stop' : 'Start', props.busy === row.app.id, () => emit('toggle', row.app)),
+        iconButton(Refresh, 'Restart', props.busy === `${row.app.id}:restart`, () => emit('restart', row.app), !up),
+      ])
     },
   },
 ])
@@ -168,4 +171,5 @@ const rowProps = (row: Row) => ({
 .apps-table .chip.backoff .dot, .apps-table .chip.starting .dot { background: #f0a020; }
 .apps-table .chip.failed .dot { background: #d03050; }
 .apps-table .warn { color: #f0a020; gap: 3px; }
+.apps-table .row-actions { display: inline-flex; gap: 2px; }
 </style>

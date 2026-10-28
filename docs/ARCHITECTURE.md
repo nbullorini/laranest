@@ -143,9 +143,9 @@ Few ports are involved, and none is chosen per app for the web:
 ## Updates
 
 `laranest update` and the panel's *Update* compare the SHA-256 of the
-running binary with the latest release's `SHA256SUMS` (releases reuse
-`v0.1.0` until the project is stable, so the version can't tell builds
-apart), download and verify the new binary, and then:
+running binary with the latest release's `SHA256SUMS` (so a re-published
+release, or a local build, is told apart too), download and verify the new
+binary, and then:
 
 - **Linux:** rename it over the installed one (atomic; running processes keep
   the old file) and `systemctl --user restart laranest`; the apps' units keep
@@ -164,11 +164,11 @@ The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
 - CI runs on every push: Linux x64/ARM64 (unit tests + an end-to-end smoke
   test) and Windows (unit tests + build). The full Windows regression
   (`windows-e2e.yml`, ~15 min) runs before each release or by hand.
-- `make publish` force-moves the `v0.1.0` tag; the Release workflow runs CI
-  and the Windows regression and publishes `laranest-linux-{amd64,arm64}`,
-  `laranest-windows-amd64.exe`, `install.sh`, `install.ps1` and `SHA256SUMS`.
-  Until the project is stable every release is `v0.1.0` (binaries embed the
-  commit, e.g. `v0.1.0+60680ba`).
+- `make publish RELEASE=vX.Y.Z` tags the current commit; the Release
+  workflow runs CI and the Windows regression and publishes
+  `laranest-linux-{amd64,arm64}`, `laranest-windows-amd64.exe`, `install.sh`,
+  `install.ps1` and `SHA256SUMS`. Binaries embed the version and the commit
+  (e.g. `v0.1.1+60680ba`).
 - The PHP workflow rebuilds only the minors with a new patch on php.net (or
   everything when `php/extensions.txt` changes) and merges them into the
   rolling `php` release.

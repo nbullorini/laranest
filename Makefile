@@ -4,9 +4,8 @@ BIN := bin/laranest
 
 .PHONY: build ui go windows dev test clean install publish
 
-# Until the repo is public and stable every release is v0.1.0, re-published
-# from the current main commit (the Release workflow replaces it).
-RELEASE ?= v0.1.0
+# Each release is a new semver tag: make publish RELEASE=v0.1.2
+RELEASE ?=
 
 build: ui go
 
@@ -34,10 +33,11 @@ install: build
 	$(HOME)/.local/bin/laranest install
 
 publish:
+	@test -n "$(RELEASE)" || { echo "usage: make publish RELEASE=vX.Y.Z"; exit 1; }
 	@test -z "$$(git status --porcelain)" || { echo "uncommitted changes"; exit 1; }
 	git push origin HEAD:main
-	git tag -f -a $(RELEASE) -m "Laranest $(RELEASE)"
-	git push -f origin $(RELEASE)
+	git tag -a $(RELEASE) -m "Laranest $(RELEASE)"
+	git push origin $(RELEASE)
 
 clean:
 	rm -rf bin web/dist/assets web/dist/index.html internal/service/laranestw.exe

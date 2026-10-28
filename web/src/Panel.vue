@@ -74,6 +74,20 @@ async function toggle(app: AppView) {
   }
 }
 
+async function restart(app: AppView) {
+  busy.value = `${app.id}:restart`
+  try {
+    const res = await api.restart(app.id)
+    if (res.error) message.warning(`${app.id}: ${res.error}`)
+    else message.success(`${app.id} restarted`)
+    await refresh()
+  } catch (e) {
+    message.error(`${app.id}: ${(e as Error).message}`)
+  } finally {
+    busy.value = null
+  }
+}
+
 function onChanged(id?: string) {
   if (id) selectedId.value = id // follows a rename
   refresh()
@@ -176,7 +190,7 @@ onBeforeUnmount(() => clearInterval(timer))
     </section>
 
     <div v-if="apps.length" class="table-wrap">
-      <AppsTable :apps="apps" :busy="busy" @open="(id) => (selectedId = id)" @toggle="toggle" @group="toggleGroup" />
+      <AppsTable :apps="apps" :busy="busy" @open="(id) => (selectedId = id)" @toggle="toggle" @restart="restart" @group="toggleGroup" />
     </div>
   </main>
 

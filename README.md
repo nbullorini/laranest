@@ -170,7 +170,7 @@ make windows     # bin/laranest.exe (cross-compiled)
 make dev         # daemon on :9150 + Vite with hot reload on :5173
 make install     # build, copy to ~/.local/bin and (re)install the service
 make test        # go test ./...
-make publish     # publish the current commit as a release (see docs/ARCHITECTURE.md)
+make publish RELEASE=v0.1.2   # tag the current commit and publish it (see docs/ARCHITECTURE.md)
 ```
 
 End-to-end tests (isolated instances, never touching your real setup), on

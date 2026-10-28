@@ -1,7 +1,6 @@
 # Publishes Laranest itself when a version tag is pushed (`make publish`).
-# Until the repo is public and stable every release is v0.1.0, re-published by
-# force-moving the tag: an existing release for the tag is replaced, and the
-# binaries embed the commit (v0.1.0+abc1234) to tell builds apart.
+# Each release is a new semver tag (v0.1.1, v0.2.0…); the binaries embed the
+# commit too (v0.1.1+abc1234). Re-pushing a tag replaces its release.
 # Tags with a suffix (v1.2.0-rc.1) become pre-releases. The PHP builds live in
 # their own rolling "php" release (php.yml) and are not rebuilt here.
 name: Release
