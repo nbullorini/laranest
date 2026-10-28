@@ -132,7 +132,7 @@ function showLogs(process: string) {
 </script>
 
 <template>
-  <NDrawer v-model:show="show" :width="760" style="max-width: 100vw">
+  <NDrawer v-model:show="show" :width="760" style="max-width: 100vw" :auto-focus="false">
     <NDrawerContent v-if="app" closable>
       <template #header>
         <div class="row">
@@ -184,12 +184,12 @@ function showLogs(process: string) {
 
         <NTabPane name="procs" tab="Processes">
           <table class="procs">
-            <thead><tr><th>Process</th><th>Status</th><th>PID</th><th>Restarts</th><th /></tr></thead>
+            <thead><tr><th>Process</th><th>Status</th><th class="pid">PID</th><th>Restarts</th><th /></tr></thead>
             <tbody>
               <tr v-for="p in app.procs" :key="p.name">
                 <td>{{ processLabels[p.name] ?? p.name }}</td>
                 <td><StateTag :state="p.state" /></td>
-                <td class="mono">{{ p.pid || '—' }}</td>
+                <td class="mono pid">{{ p.pid || '—' }}</td>
                 <td>{{ p.restarts }}</td>
                 <td class="right">
                   <NButton quaternary circle size="small" title="View logs" @click="showLogs(p.name)">
@@ -272,7 +272,13 @@ function showLogs(process: string) {
 .facts dd { margin: 0; word-break: break-all; }
 .procs { width: 100%; border-collapse: collapse; }
 .procs th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.85rem; }
-.procs th, .procs td { padding: 8px 6px; border-bottom: 1px solid var(--border); }
+.procs th, .procs td { padding: 8px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.procs td:first-child { white-space: normal; }
+@media (max-width: 480px) {
+  .procs .pid { display: none; } /* the least useful column on a phone */
+  .facts { grid-template-columns: 1fr; gap: 2px; }
+  .facts dd { margin-bottom: 8px; }
+}
 .right { text-align: right; white-space: nowrap; }
 </style>
 

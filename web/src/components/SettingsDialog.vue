@@ -164,3 +164,8 @@ async function save() {
     </template>
   </NModal>
 </template>
+
+<style scoped>
+/* Long labels and commands wrap onto a new line on phones. */
+.row { flex-wrap: wrap; }
+</style>

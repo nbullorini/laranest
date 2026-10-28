@@ -119,8 +119,10 @@ defineExpose({ run })
     <div v-for="c in commands" :key="c.id" class="cmd">
       <div class="head clickable" @click="toggle(c.id)">
         <NIcon :component="open === c.id ? ChevronDown : ChevronForward" />
-        <code class="grow line">{{ c.line }}</code>
-        <span class="muted small">{{ when(c) }}</span>
+        <div class="grow main">
+          <code class="line">{{ c.line }}</code>
+          <span class="muted small">{{ when(c) }}</span>
+        </div>
         <NTag size="small" :bordered="false" :type="tagType(c)"
           :title="c.unresolved ? 'It exited fine, but the warning it was run for is still there: check its output' : undefined">
           <span class="row" style="gap: 6px"><NSpin v-if="c.status === 'running'" :size="12" />{{ tagText(c) }}</span>
@@ -144,7 +146,8 @@ defineExpose({ run })
 <style scoped>
 .cmd { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
-.line { word-break: break-all; }
+.main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.line { overflow-wrap: anywhere; }
 .unresolved { padding: 6px 12px; background: rgba(240, 160, 32, 0.12); color: #f0a020; }
 .output {
   margin: 0; max-height: calc(100vh - 380px); min-height: 120px; overflow: auto; padding: 8px 12px;
