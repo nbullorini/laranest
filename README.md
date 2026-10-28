@@ -19,6 +19,9 @@ starts its workers and serves it at `https://<app>.localhost`.
   searchable, each exception with its stack trace.
 - **`dump()` and `dd()` in the panel** (optional, per app): every dump with the
   file and line that made it and the request or command it came from.
+- **Share an app** with a public link (a free Cloudflare quick tunnel, no
+  account) to show it to a client or test a webhook; Laravel builds its URLs
+  with that address.
 - **HTTPS by default** with a local certificate authority your browsers trust.
 - **Tells you what is wrong:** missing `.env` values, an invalid `APP_KEY`,
   databases or Redis that reject the credentials, unmigrated databases,

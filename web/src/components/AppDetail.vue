@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, h, nextTick, ref, watch } from 'vue'
 import {
-  NBadge, NButton, NCollapse, NCollapseItem, NDrawer, NDrawerContent, NIcon, NInput, NRadioButton, NRadioGroup, NSelect, NSwitch, NTabPane, NTabs,
+  NAlert, NBadge, NButton, NCollapse, NCollapseItem, NDrawer, NDrawerContent, NIcon, NInput, NRadioButton, NRadioGroup, NSelect, NSwitch, NTabPane, NTabs,
   useDialog, useMessage,
 } from 'naive-ui'
-import { Play, Reader, Refresh, Stop, Sync, Trash } from '@vicons/ionicons5'
+import { Copy, Globe, Play, Reader, Refresh, Stop, Sync, Trash } from '@vicons/ionicons5'
 import StateTag from './StateTag.vue'
 import WarningList from './WarningList.vue'
 import LogViewer from './LogViewer.vue'
@@ -88,6 +88,34 @@ const start = () => run(() => api.start(appId()))
 const stop = () => run(() => api.stop(appId()))
 const restart = (process = '') => run(() => api.restart(appId(), process))
 const redetect = () => run(() => api.redetect(appId()), 'Project re-analyzed')
+const sharing = ref(false)
+
+// A public link through a Cloudflare quick tunnel: confirm first, it exposes the app.
+function share() {
+  const app = props.app!
+  const vite = app.procs.some((p) => p.name === 'vite' && p.state === 'running')
+  dialog.warning({
+    title: `Share ${app.id}`,
+    content: () => h('div', { class: 'stack', style: 'gap: 8px' }, [
+      h('span', 'Anyone with the link can open this app from the internet while it is shared, through a free Cloudflare tunnel. Share it only with people you trust, and stop sharing when you are done.'),
+      vite ? h('span', { class: 'muted small' }, 'The Vite dev server is not reachable through the link: run npm run build so visitors get the built assets.') : null,
+      h('span', { class: 'muted small' }, 'Links built from APP_URL (emails, some redirects) still point to the local address.'),
+    ]),
+    positiveText: 'Share',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      sharing.value = true
+      await run(() => api.share(app.id), 'The app is shared')
+      sharing.value = false
+    },
+  })
+}
+const unshare = () => run(() => api.unshare(appId()), 'Sharing stopped')
+
+async function copyShare() {
+  await navigator.clipboard.writeText(props.app!.share_url!)
+  message.success('Link copied')
+}
 
 function fix(w: Warning) {
   const id = appId()
@@ -178,7 +206,24 @@ function showLogs(process: string) {
         <NButton quaternary :loading="busy" title="Re-analyze composer.json, .env and the schedule" @click="redetect()">
           <template #icon><NIcon :component="Sync" /></template>Re-detect
         </NButton>
+        <NButton v-if="app.state !== 'stopped' && !app.share_url" quaternary :loading="sharing"
+          title="Get a public link to this app" @click="share">
+          <template #icon><NIcon :component="Globe" /></template>{{ sharing ? 'Opening a tunnel…' : 'Share' }}
+        </NButton>
       </div>
+
+      <NAlert v-if="app.share_url" type="warning" :show-icon="false" class="shared">
+        <div class="row" style="flex-wrap: wrap">
+          <NIcon :component="Globe" />
+          <span>Shared publicly at</span>
+          <a :href="app.share_url" target="_blank" class="mono link">{{ app.share_url }}</a>
+          <NButton size="tiny" quaternary circle title="Copy the link" @click="copyShare">
+            <template #icon><NIcon :component="Copy" /></template>
+          </NButton>
+          <span class="grow" />
+          <NButton size="small" :loading="busy" @click="unshare">Stop sharing</NButton>
+        </div>
+      </NAlert>
 
       <NTabs v-model:value="tab" type="line" animated>
         <NTabPane name="overview">
@@ -301,6 +346,7 @@ function showLogs(process: string) {
 .title { font-size: 1.2rem; font-weight: 600; }
 .link { color: var(--brand); text-decoration: none; }
 .actions { margin-bottom: 8px; flex-wrap: wrap; }
+.shared { margin-bottom: 10px; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; word-break: break-all; }

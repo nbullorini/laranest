@@ -42,6 +42,11 @@ type Site struct {
 	HTTPS      bool   // served over TLS; plain HTTP redirects to it
 	// Env are extra FastCGI parameters for the app's PHP ($_SERVER).
 	Env map[string]string
+	// ShareHost is the public host of the app's tunnel (it reaches the HTTP
+	// port), served as HTTPS so the app builds its URLs with it.
+	ShareHost string
+	// ForwardedHTTPS tells a web command (Octane…) the visitor used HTTPS.
+	ForwardedHTTPS bool
 }
 
 type Proxy struct {
@@ -147,6 +152,13 @@ func (p *Proxy) config(sites []Site, withTLS bool) obj {
 			"handle":   []obj{{"handler": "subroute", "routes": siteRoutes(s, p.panelURL)}},
 			"terminal": true,
 		})
+		if s.ShareHost != "" && (len(s.FastCGI) > 0 || s.Upstream != "") {
+			plain = append(plain, obj{
+				"match":    []obj{{"host": []string{s.ShareHost}}},
+				"handle":   []obj{{"handler": "subroute", "routes": siteRoutes(shared(s), p.panelURL)}},
+				"terminal": true,
+			})
+		}
 		if s.HTTPS && withTLS {
 			secure = append(secure, routes...)
 			tlsHosts = append(tlsHosts, hosts...)
@@ -191,6 +203,18 @@ func (p *Proxy) config(sites []Site, withTLS bool) obj {
 	}
 }
 
+// shared is the site as its tunnel serves it: the visitor's connection is
+// HTTPS (to Cloudflare), so PHP must see it that way.
+func shared(s Site) Site {
+	env := map[string]string{"HTTPS": "on", "SERVER_PORT": "443", "REQUEST_SCHEME": "https"}
+	for k, v := range s.Env {
+		env[k] = v
+	}
+	s.Env = env
+	s.ForwardedHTTPS = true
+	return s
+}
+
 func redirect(location string) obj {
 	return obj{
 		"handler":     "static_response",
@@ -212,7 +236,11 @@ func portSuffix(addr, defaultPort string) string {
 // are served directly, everything else goes to index.php over FastCGI.
 func siteRoutes(s Site, panelURL string) []obj {
 	if s.Upstream != "" {
-		return []obj{{"handle": []obj{reverseProxy(s.Upstream)}}}
+		h := reverseProxy(s.Upstream)
+		if s.ForwardedHTTPS {
+			h["headers"] = obj{"request": obj{"set": obj{"X-Forwarded-Proto": []string{"https"}, "X-Forwarded-Port": []string{"443"}}}}
+		}
+		return []obj{{"handle": []obj{h}}}
 	}
 	if len(s.FastCGI) == 0 {
 		return []obj{{"handle": []obj{staticPage(503, "App stopped",

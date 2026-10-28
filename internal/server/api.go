@@ -50,6 +50,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/apps/{id}/detect", s.handleRedetect)
 	mux.HandleFunc("POST /api/apps/{id}/env", s.handleSetEnv)
 	mux.HandleFunc("GET /api/apps/{id}/logs/{process}", s.handleLogs)
+	mux.HandleFunc("POST /api/apps/{id}/share", s.handleShare)
+	mux.HandleFunc("DELETE /api/apps/{id}/share", s.handleUnshare)
 	mux.HandleFunc("GET /api/apps/{id}/dumps", s.handleDumps)
 	mux.HandleFunc("POST /api/apps/{id}/dumps", s.handleAddDump)
 	mux.HandleFunc("DELETE /api/apps/{id}/dumps", s.handleClearDumps)
@@ -345,6 +347,17 @@ func (s *Server) handleSetEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v, err := s.apps.SetEnv(r.PathValue("id"), req.Values)
+	respond(w, v, err)
+}
+
+// handleShare opens a public tunnel to the app (it waits for its address).
+func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
+	v, err := s.apps.Share(r.PathValue("id"))
+	respond(w, v, err)
+}
+
+func (s *Server) handleUnshare(w http.ResponseWriter, r *http.Request) {
+	v, err := s.apps.Unshare(r.PathValue("id"))
 	respond(w, v, err)
 }
 

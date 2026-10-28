@@ -148,6 +148,17 @@ project's version decode and render each dump (HTML and text). It posts them to
 the daemon, which keeps the last 200 per app in memory for the panel (each
 shown in a sandboxed frame) and the MCP server (`get_dumps`, as text).
 
+## Sharing
+
+*Share* runs `cloudflared tunnel --url http://127.0.0.1:<HTTP port>` as the
+app's `share` process: a Cloudflare quick tunnel (no account; the system's
+`cloudflared` if it is on PATH, otherwise the latest release, checked against
+GitHub's SHA-256 digest of the asset). Laranest reads the random
+`https://<words>.trycloudflare.com` address from its output and routes that
+host on the HTTP port to the app with `HTTPS=on` (and `X-Forwarded-Proto` for a
+web command), so Laravel builds its URLs with the public address. The tunnel
+stops with the app, on *Stop sharing*, and when the daemon restarts.
+
 ## Ports
 
 Few ports are involved, and none is chosen per app for the web:
