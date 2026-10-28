@@ -147,16 +147,12 @@ jobs:
           go test ./...
 
   # macOS (beta): unit tests, then the end-to-end test on a real Mac with the
-  # launchd agent, PHP for macOS and Laranest's own process supervisor.
+  # launchd agent, PHP for macOS and Laranest's own process supervisor. Apple
+  # silicon runners are often unavailable, so that one runs on demand
+  # (macos-arm64.yml) instead of blocking every push.
   macos:
-    name: macos (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: arm64, runner: macos-15 }
-          - { arch: x86_64, runner: macos-15-intel }
+    name: macos (x86_64)
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 

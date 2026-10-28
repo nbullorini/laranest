@@ -67,7 +67,7 @@ Requirements:
 |---|---|
 | **Tested** (CI on every change, or by hand) | Ubuntu 24.04 (x86_64, ARM64) and 22.04 · WSL2 with Ubuntu 24.04 · Windows 11 · Windows Server 2025 |
 | **Supported** (same requirements, not tested on every change) | Debian 11, 12, 13 · Ubuntu 20.04+ · RHEL, Rocky and Alma 8, 9, 10 · CentOS Stream 9, 10 · Fedora · Arch, Manjaro, openSUSE, Linux Mint, Pop!_OS · WSL2 with any of them · Windows 10 (64-bit) · Windows on ARM64 (x64 emulation) |
-| **Beta** (tested in CI on every change, waiting for reports from Mac users) | macOS 15 (Apple silicon and Intel) · macOS 13 and 14 |
+| **Beta** (waiting for reports from Mac users) | macOS 15 on Intel (CI on every change) and Apple silicon (tested before releases) · macOS 13 and 14 |
 | **Not supported** | CentOS 7 and Ubuntu 18.04 (systemd and glibc too old) · distributions without systemd or glibc (Alpine, Void, Devuan, Gentoo with OpenRC) · WSL1 · 32-bit Windows |
 
 On Linux, Laranest needs systemd 236+ with user sessions and glibc 2.28+ (for
