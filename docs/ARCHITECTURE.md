@@ -161,13 +161,13 @@ The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
 
 ## Releases
 
-- CI runs on every push: Linux x64/ARM64 (unit tests + an end-to-end smoke
-  test) and Windows (unit tests + build). The full Windows regression
-  (`windows-e2e.yml`, ~15 min) runs before each release or by hand.
+- Every push to main and pull request that touches code runs CI (Linux
+  x64/ARM64: unit tests + an end-to-end smoke test; Windows: unit tests +
+  build) and the full Windows regression (`windows-e2e.yml`, ~15 min).
 - `make publish RELEASE=vX.Y.Z` tags the current commit; the Release
-  workflow waits for that commit's CI on main (it doesn't run it again; a
-  failed or missing CI stops the release), runs the Windows regression and
-  publishes
+  workflow waits for (or reads) that commit's CI and Windows regression on
+  main — it doesn't test again, and a failed or missing run stops the
+  release — then builds and publishes
   `laranest-linux-{amd64,arm64}`, `laranest-windows-amd64.exe`, `install.sh`,
   `install.ps1` and `SHA256SUMS`. Binaries embed the version and the commit
   (e.g. `v0.1.1+60680ba`).

@@ -1,12 +1,16 @@
 # Full end-to-end regression on native Windows (test/e2e/regression.ps1):
 # PHP from windows.php.net, php-cgi workers, Job Objects, HTTPS, the CLI.
-# It takes ~15 minutes, so it runs before every release (release.yml) and
-# when started by hand from the Actions tab, not on every push.
+# It runs (~15 min) with CI on every push to main and pull request that
+# touches code, like DDEV does, so a release only has to check its result.
 name: Windows e2e
 
 on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "php/**", ".github/workflows/php.yml"]
+  pull_request:
+    paths-ignore: ["**.md", "php/**", ".github/workflows/php.yml"]
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read

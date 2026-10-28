@@ -14,10 +14,11 @@ permissions:
   actions: read # to read the CI run of the tagged commit
 
 jobs:
-  # Never publish a commit that didn't pass CI. Like Laravel's repos, don't
-  # run it again: wait for (or read) the CI that ran when it was pushed to
-  # main, so `make publish` works right after the push.
-  ci-passed:
+  # Never publish a commit that wasn't tested. Like DDEV and Laravel's repos,
+  # don't test it again here: wait for (or read) the CI and the Windows
+  # regression that ran when it was pushed to main, so `make publish` works
+  # right after the push and a release of a tested commit only builds.
+  tested:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -25,45 +26,45 @@ jobs:
         with:
           fetch-depth: 0 # to compare with the last tested commit
 
-      - name: Wait for the CI of ${{ github.sha }} on main
+      - name: Wait for the tests of ${{ github.sha }} on main
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # ci.yml skips commits that only touch docs or php/ (paths-ignore):
-          # then the latest green CI on main counts, if nothing else changed since.
+          # Both skip commits that only touch docs or php/ (paths-ignore):
+          # then the latest green run on main counts, if nothing else changed since.
           only_ignored() {
             git diff --name-only "$1" "$GITHUB_SHA" | grep -vE '\.md$|^php/|^\.github/workflows/php\.yml$' | grep -q . && return 1
             return 0
           }
-          for i in $(seq 120); do
-            run=$(gh run list --workflow ci.yml --branch main --commit "$GITHUB_SHA" --event push -L 1 \
-              --json databaseId,status,conclusion -q '.[0]')
-            if [ -z "$run" ]; then
-              if [ "$i" -ge 6 ]; then # a minute for the push's CI to show up
-                last=$(gh run list --workflow ci.yml --branch main --event push --status success -L 1 --json headSha -q '.[0].headSha')
-                if [ -n "$last" ] && git merge-base --is-ancestor "$last" "$GITHUB_SHA" && only_ignored "$last"; then
-                  echo "Only docs/PHP-build files changed since $last, which passed CI."; exit 0
+          passed() { # passed WORKFLOW: waits for its run on this commit
+            for i in $(seq 120); do
+              run=$(gh run list --workflow "$1" --branch main --commit "$GITHUB_SHA" --event push -L 1 \
+                --json databaseId,status,conclusion -q '.[0]')
+              if [ -z "$run" ]; then
+                if [ "$i" -ge 6 ]; then # a minute for the push's runs to show up
+                  last=$(gh run list --workflow "$1" --branch main --event push --status success -L 1 --json headSha -q '.[0].headSha')
+                  if [ -n "$last" ] && git merge-base --is-ancestor "$last" "$GITHUB_SHA" && only_ignored "$last"; then
+                    echo "$1: only docs/PHP-build files changed since $last, which passed."; return 0
+                  fi
+                  echo "::error::$1 never ran for this commit on main: push it to main first."; return 1
                 fi
-                echo "::error::This commit never ran CI on main: push it to main first."; exit 1
+              else
+                status=$(jq -r .status <<<"$run"); conclusion=$(jq -r .conclusion <<<"$run")
+                echo "$1 run $(jq -r .databaseId <<<"$run"): $status $conclusion"
+                if [ "$status" = completed ]; then
+                  [ "$conclusion" = success ] && return 0
+                  echo "::error::$1 failed for this commit: not publishing."; return 1
+                fi
               fi
-            else
-              status=$(jq -r .status <<<"$run"); conclusion=$(jq -r .conclusion <<<"$run")
-              echo "CI run $(jq -r .databaseId <<<"$run"): $status $conclusion"
-              if [ "$status" = completed ]; then
-                [ "$conclusion" = success ] && exit 0
-                echo "::error::CI failed for this commit: not publishing."; exit 1
-              fi
-            fi
-            sleep 30
-          done
-          echo "::error::Timed out waiting for CI."; exit 1
-
-  windows-e2e:
-    uses: ./.github/workflows/windows-e2e.yml
+              sleep 30
+            done
+            echo "::error::Timed out waiting for $1."; return 1
+          }
+          passed ci.yml && passed windows-e2e.yml
 
   release:
-    needs: [ci-passed, windows-e2e]
+    needs: tested
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
