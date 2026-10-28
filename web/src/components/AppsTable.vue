@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, watch, type VNode } from 'vue'
 import { NButton, NDataTable, NIcon, type DataTableColumns } from 'naive-ui'
-import { Play, Refresh, Stop, Warning } from '@vicons/ionicons5'
+import { ChevronDown, ChevronForward, Play, Refresh, Stop, Warning } from '@vicons/ionicons5'
 import StateTag from './StateTag.vue'
 import { processLabels, type AppView } from '../api'
 
@@ -63,6 +63,16 @@ watch(collapsed, (v) => {
   } catch { /* private mode: just don't remember */ }
 })
 
+// Phones and tablets get cards instead of the table: its columns don't fit.
+const narrowQuery = window.matchMedia('(max-width: 980px)')
+const narrow = ref(narrowQuery.matches)
+const onNarrow = (e: MediaQueryListEvent) => (narrow.value = e.matches)
+narrowQuery.addEventListener('change', onNarrow)
+onBeforeUnmount(() => narrowQuery.removeEventListener('change', onNarrow))
+
+// Renders VNodes built by the helpers below inside the template.
+const VNodes = (p: { v: VNode | VNode[] | null }) => p.v
+
 const problems = (app: AppView) => app.warnings.filter((w) => w.level !== 'info').length
 const isUp = (app: AppView) => app.state !== 'stopped'
 
@@ -72,11 +82,42 @@ function iconButton(icon: typeof Play, title: string, loading: boolean, onClick:
   { icon: () => h(NIcon, { component: icon }) })
 }
 
+function appActions(app: AppView) {
+  const up = isUp(app)
+  return h('div', { class: 'row-actions' }, [
+    iconButton(up ? Stop : Play, up ? 'Stop' : 'Start', props.busy === app.id, () => emit('toggle', app)),
+    iconButton(Refresh, 'Restart', props.busy === `${app.id}:restart`, () => emit('restart', app), !up),
+  ])
+}
+
+function groupActions(row: GroupRow) {
+  const allUp = row.apps.every(isUp)
+  return iconButton(allUp ? Stop : Play, allUp ? 'Stop the group' : 'Start the group', false,
+    () => emit('group', row.apps, !allUp))
+}
+
+const chips = (app: AppView) => h('div', { class: 'chips' }, app.procs.map((p) =>
+  h('span', { class: ['chip', p.state], title: p.state }, [h('i', { class: 'dot' }), processLabels[p.name] ?? p.name])))
+
+function warningsBadge(app: AppView) {
+  const n = problems(app)
+  return n ? h('span', { class: 'warn small row', title: `${n} warning(s)` }, [h(NIcon, { component: Warning }), String(n)]) : null
+}
+
+const versions = (app: AppView) =>
+  `${app.php_version || '?'} · ${app.detection?.laravel_version?.split('.')[0] ?? '?'}`
+
+const isExpanded = (row: GroupRow) => expandedKeys.value.includes(row.key)
+function toggleExpanded(row: GroupRow) {
+  onExpand(isExpanded(row) ? expandedKeys.value.filter((k) => k !== row.key) : [...expandedKeys.value, row.key])
+}
+
 const columns = computed<DataTableColumns<Row>>(() => [
   {
     key: 'name',
     title: 'App',
     tree: true,
+    minWidth: 190,
     render: (row) => {
       if (row.isGroup) {
         const up = row.apps.filter(isUp).length
@@ -91,49 +132,33 @@ const columns = computed<DataTableColumns<Row>>(() => [
   {
     key: 'state',
     title: 'Status',
-    width: 120,
+    width: 110,
     render: (row) => (row.isGroup ? null : h(StateTag, { state: row.app.state })),
   },
   {
     key: 'procs',
     title: 'Processes',
-    render: (row) => row.isGroup ? null : h('div', { class: 'chips' }, row.app.procs.map((p) =>
-      h('span', { class: ['chip', p.state], title: p.state }, [h('i', { class: 'dot' }), processLabels[p.name] ?? p.name]))),
+    minWidth: 220,
+    render: (row) => (row.isGroup ? null : chips(row.app)),
   },
   {
     key: 'versions',
     title: 'PHP · Laravel',
     width: 140,
-    render: (row) => row.isGroup ? null
-      : h('span', { class: 'small' }, `${row.app.php_version || '?'} · ${row.app.detection?.laravel_version?.split('.')[0] ?? '?'}`),
+    render: (row) => (row.isGroup ? null : h('span', { class: 'small' }, versions(row.app))),
   },
   {
     key: 'warnings',
     title: '',
-    width: 60,
-    render: (row) => {
-      if (row.isGroup) return null
-      const n = problems(row.app)
-      return n ? h('span', { class: 'warn small row', title: `${n} warning(s)` }, [h(NIcon, { component: Warning }), String(n)]) : null
-    },
+    width: 48,
+    render: (row) => (row.isGroup ? null : warningsBadge(row.app)),
   },
   {
     key: 'actions',
     title: '',
     width: 90,
     align: 'right',
-    render: (row) => {
-      if (row.isGroup) {
-        const allUp = row.apps.every(isUp)
-        return iconButton(allUp ? Stop : Play, allUp ? 'Stop the group' : 'Start the group', false,
-          () => emit('group', row.apps, !allUp))
-      }
-      const up = isUp(row.app)
-      return h('div', { class: 'row-actions' }, [
-        iconButton(up ? Stop : Play, up ? 'Stop' : 'Start', props.busy === row.app.id, () => emit('toggle', row.app)),
-        iconButton(Refresh, 'Restart', props.busy === `${row.app.id}:restart`, () => emit('restart', row.app), !up),
-      ])
-    },
+    render: (row) => (row.isGroup ? groupActions(row) : appActions(row.app)),
   },
 ])
 
@@ -146,7 +171,34 @@ const rowProps = (row: Row) => ({
 </script>
 
 <template>
-  <NDataTable class="apps-table" :columns="columns" :data="rows" :row-key="(r: Row) => r.key" :row-props="rowProps"
+  <div v-if="narrow" class="apps-table apps-cards">
+    <template v-for="row in rows" :key="row.key">
+      <div v-if="row.isGroup" class="group-row card-group" @click="toggleExpanded(row)">
+        <NIcon :component="isExpanded(row) ? ChevronDown : ChevronForward" />
+        <span class="group-name grow">{{ row.name }}
+          <span class="muted small">· {{ row.apps.filter(isUp).length }}/{{ row.apps.length }} running</span></span>
+        <VNodes :v="groupActions(row)" />
+      </div>
+      <div v-for="r in row.isGroup ? (isExpanded(row) ? row.children : []) : [row]" :key="r.key"
+        class="app-row app-card" :class="{ nested: row.isGroup }" @click="emit('open', (r as AppRow).app.id)">
+        <div class="card-top">
+          <div class="app-cell grow">
+            <span class="app-id">{{ (r as AppRow).app.id }}</span>
+            <a :href="(r as AppRow).app.url" target="_blank" class="mono small link" @click.stop>{{ (r as AppRow).app.url }}</a>
+          </div>
+          <VNodes :v="appActions((r as AppRow).app)" />
+        </div>
+        <VNodes :v="chips((r as AppRow).app)" />
+        <div class="card-meta small">
+          <StateTag :state="(r as AppRow).app.state" />
+          <span class="muted">PHP · Laravel {{ versions((r as AppRow).app) }}</span>
+          <span class="grow" />
+          <VNodes :v="warningsBadge((r as AppRow).app)" />
+        </div>
+      </div>
+    </template>
+  </div>
+  <NDataTable v-else class="apps-table" :columns="columns" :data="rows" :row-key="(r: Row) => r.key" :row-props="rowProps"
     :expanded-row-keys="expandedKeys" :indent="20" :bordered="false" size="small"
     @update:expanded-row-keys="onExpand" />
 </template>
@@ -159,7 +211,12 @@ const rowProps = (row: Row) => ({
 .apps-table .group-name .muted { font-weight: 400; }
 .apps-table .app-cell { display: inline-flex; flex-direction: column; vertical-align: middle; line-height: 1.35; }
 .apps-table .app-id { font-weight: 600; }
-.apps-table .link { color: var(--brand); text-decoration: none; }
+.apps-table .app-cell { max-width: 100%; min-width: 0; }
+.apps-table:not(.apps-cards) .app-cell { max-width: 300px; }
+.apps-table .link {
+  color: var(--brand); text-decoration: none; display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .apps-table .link:hover { text-decoration: underline; }
 .apps-table .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .apps-table .chip {
@@ -171,5 +228,14 @@ const rowProps = (row: Row) => ({
 .apps-table .chip.backoff .dot, .apps-table .chip.starting .dot { background: #f0a020; }
 .apps-table .chip.failed .dot { background: #d03050; }
 .apps-table .warn { color: #f0a020; gap: 3px; }
-.apps-table .row-actions { display: inline-flex; gap: 2px; }
+.apps-table .row-actions { display: inline-flex; gap: 2px; flex-shrink: 0; }
+
+/* Phones and tablets: one card per app. */
+.apps-cards { display: flex; flex-direction: column; }
+.apps-cards .card-group { display: flex; align-items: center; gap: 8px; padding: 10px 6px; border-radius: 8px; background: var(--chip); margin-top: 4px; }
+.apps-cards .app-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 6px; border-bottom: 1px solid var(--border); }
+.apps-cards .app-card:last-child { border-bottom: none; }
+.apps-cards .app-card.nested { padding-left: 16px; }
+.apps-cards .card-top { display: flex; align-items: flex-start; gap: 8px; }
+.apps-cards .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 </style>

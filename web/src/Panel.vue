@@ -148,9 +148,9 @@ onBeforeUnmount(() => clearInterval(timer))
       </template>
       Settings
     </NTooltip>
-    <NButton type="primary" @click="showAdd = true">
+    <NButton type="primary" aria-label="Add app" @click="showAdd = true">
       <template #icon><NIcon :component="Add" /></template>
-      Add app
+      <span class="add-label">Add app</span>
     </NButton>
   </header>
 
@@ -210,6 +210,12 @@ onBeforeUnmount(() => clearInterval(timer))
   position: sticky; top: 0; z-index: 10;
 }
 .brand { font-weight: 700; font-size: 1.1rem; color: var(--brand); display: flex; gap: 8px; align-items: center; }
+@media (max-width: 480px) {
+  .topbar { padding: 10px 16px; }
+}
+@media (max-width: 360px) {
+  .add-label { display: none; } /* icon only on the narrowest phones */
+}
 .empty { text-align: center; padding: 48px 24px; border: 1px dashed var(--border); border-radius: 12px; }
 .empty h2 { margin: 8px 0; font-size: 1.15rem; }
 .table-wrap {

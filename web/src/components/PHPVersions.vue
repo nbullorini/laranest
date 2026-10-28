@@ -138,7 +138,22 @@ async function updateAll() {
 <style scoped>
 .versions { width: 100%; border-collapse: collapse; }
 .versions th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.85rem; }
-.versions th, .versions td { padding: 8px 6px; border-bottom: 1px solid var(--border); }
+.versions th, .versions td { padding: 8px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+/* Phones: each version becomes a small card (version, source and actions on
+   top; status and the apps using it below) instead of a crushed table. */
+@media (max-width: 560px) {
+  .versions thead { display: none; }
+  .versions tr {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .versions td { border: none; padding: 0; }
+  .versions td:nth-child(1) { grid-row: 1; grid-column: 1; }
+  .versions td:nth-child(2) { grid-row: 1; grid-column: 2; }
+  .versions td.right { grid-row: 1; grid-column: 3; }
+  .versions td:nth-child(3), .versions td:nth-child(4) { grid-column: 1 / -1; white-space: normal; }
+  .versions td:empty { display: none; }
+}
 .right { text-align: right; white-space: nowrap; }
 .app-link { color: var(--brand); margin-right: 8px; text-decoration: none; }
 </style>
