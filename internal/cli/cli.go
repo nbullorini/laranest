@@ -38,7 +38,7 @@ func Execute() error {
 		SilenceErrors: true,
 	}
 	root.AddCommand(serveCmd(), installCmd(), uninstallCmd(), statusCmd(), versionCmd(), updateCmd(), mcpCmd())
-	if runtime.GOOS != "windows" { // Windows lets any user listen on 80/443
+	if runtime.GOOS == "linux" { // Windows and macOS let any user listen on 80/443
 		root.AddCommand(setupPortsCmd())
 	}
 	root.AddCommand(phpCmds()...)

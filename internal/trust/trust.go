@@ -68,8 +68,9 @@ func Check(rootPath string, env wsl.Env) Status {
 	return st
 }
 
-// InstallLinux adds the CA to the system store (asks for sudo) and to every
-// NSS database found (Chrome/Chromium, Firefox deb and snap profiles).
+// InstallLinux adds the CA to the system store (asks for sudo; on macOS, the
+// System Keychain, which asks for your password) and to every NSS database
+// found (Chrome/Chromium, Firefox deb and snap profiles; Firefox on macOS).
 func InstallLinux(rootPath string) error {
 	cert, err := load(rootPath)
 	if err != nil {
@@ -86,10 +87,14 @@ func InstallLinux(rootPath string) error {
 	// deb Firefox (and Chrome) and once more for the snap Firefox profiles.
 	home, _ := os.UserHomeDir()
 	var errs []error
-	for _, profiles := range []string{
+	profileDirs := []string{
 		filepath.Join(home, ".mozilla", "firefox", "*"),
 		filepath.Join(home, "snap", "firefox", "common", ".mozilla", "firefox", "*"), // Ubuntu's default Firefox
-	} {
+	}
+	if runtime.GOOS == "darwin" {
+		profileDirs = []string{filepath.Join(home, "Library", "Application Support", "Firefox", "Profiles", "*")}
+	}
+	for _, profiles := range profileDirs {
 		truststore.NSSProfile = profiles
 		err := truststore.Install(cert, truststore.WithFirefox(), truststore.WithNoSystem())
 		if err != nil && !strings.Contains(err.Error(), "not NSS security databases found") {
@@ -159,6 +164,9 @@ func certutil() string {
 
 // NSSToolInstall is the command that installs certutil on this distribution.
 func NSSToolInstall() string {
+	if runtime.GOOS == "darwin" {
+		return "brew install nss"
+	}
 	data, _ := os.ReadFile("/etc/os-release")
 	return nssToolInstall(string(data))
 }

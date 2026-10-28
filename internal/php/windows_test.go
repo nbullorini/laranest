@@ -127,3 +127,20 @@ func TestInstallVCRuntime(t *testing.T) {
 		t.Error("accepted a download that doesn't match its checksum")
 	}
 }
+
+// static-php-cli lists builds for every OS: only this one's are offered.
+func TestParseStaticPHPPicksThisPlatform(t *testing.T) {
+	var html strings.Builder
+	for _, p := range []string{"linux", "macos"} {
+		for _, sapi := range []string{"cli", "fpm"} {
+			fmt.Fprintf(&html, `<a href="php-8.4.8-%s-%s-%s.tar.gz">`, sapi, p, arch())
+		}
+	}
+	rels, err := parseStaticPHP("https://x/", []byte(html.String()))
+	if err != nil || len(rels) != 1 {
+		t.Fatalf("want one release, got %+v %v", rels, err)
+	}
+	if !strings.Contains(rels[0].CLIURL, "-"+platform()+"-") || !strings.Contains(rels[0].FPMURL, "-"+platform()+"-") {
+		t.Errorf("got another platform's build: %+v", rels[0])
+	}
+}

@@ -24,12 +24,12 @@ starts its workers and serves it at `https://<app>.localhost`.
   the panel.
 
 Runs on **Linux** (any distribution with systemd), **WSL2** (browsing from
-Windows) and **Windows 10/11**, on x86_64 and ARM64. See
+Windows), **Windows 10/11** and, in beta, **macOS**, on x86_64 and ARM64. See
 [supported platforms](#supported-platforms).
 
 ## Install
 
-**Linux and WSL2:**
+**Linux, WSL2 and macOS:**
 
 ```bash
 curl -fsSL https://github.com/nbullorini/laranest/releases/latest/download/install.sh | bash
@@ -53,6 +53,10 @@ Requirements:
   systemd user service, without sudo. On WSL, if your distro logs in as
   `root`, create a user first (`adduser <name>`), set `[user] default=<name>`
   in `/etc/wsl.conf` and restart the distro.
+- **macOS (beta):** macOS 13 or later, Apple silicon or Intel. Same command,
+  as your normal user: `laranest` goes into `~/.local/bin` and starts as a
+  launchd agent of your user (`~/Library/LaunchAgents/dev.laranest.plist`),
+  without administrator rights.
 - **Windows:** 64-bit Windows 10 or 11. Laranest installs into
   `%LOCALAPPDATA%\Programs\Laranest`, adds itself to your PATH and starts in the
   background when you sign in (no window, no administrator rights).
@@ -63,7 +67,8 @@ Requirements:
 |---|---|
 | **Tested** (CI on every change, or by hand) | Ubuntu 24.04 (x86_64, ARM64) and 22.04 · WSL2 with Ubuntu 24.04 · Windows 11 · Windows Server 2025 |
 | **Supported** (same requirements, not tested on every change) | Debian 11, 12, 13 · Ubuntu 20.04+ · RHEL, Rocky and Alma 8, 9, 10 · CentOS Stream 9, 10 · Fedora · Arch, Manjaro, openSUSE, Linux Mint, Pop!_OS · WSL2 with any of them · Windows 10 (64-bit) · Windows on ARM64 (x64 emulation) |
-| **Not supported** | macOS · CentOS 7 and Ubuntu 18.04 (systemd and glibc too old) · distributions without systemd or glibc (Alpine, Void, Devuan, Gentoo with OpenRC) · WSL1 · 32-bit Windows |
+| **Beta** (tested in CI on every change, waiting for reports from Mac users) | macOS 15 (Apple silicon and Intel) · macOS 13 and 14 |
+| **Not supported** | CentOS 7 and Ubuntu 18.04 (systemd and glibc too old) · distributions without systemd or glibc (Alpine, Void, Devuan, Gentoo with OpenRC) · WSL1 · 32-bit Windows |
 
 On Linux, Laranest needs systemd 236+ with user sessions and glibc 2.28+ (for
 the Node.js it downloads; its PHP builds need only 2.17). On Windows, PHP gets
@@ -74,8 +79,8 @@ system-wide.
 
 | | |
 |---|---|
-| **Trust the HTTPS certificates** | Click *Trust on Windows…* in the panel (Windows and WSL; Windows asks you to confirm) or run `laranest trust` (Ubuntu: asks for your sudo password once; also covers Chrome and Firefox). |
-| **Clean URLs (ports 80/443)** | Linux: `laranest setup-ports` (asks for your sudo password once). Windows needs nothing: Laranest uses 80/443 when they are free. Otherwise it picks free ports such as 8080/8443. |
+| **Trust the HTTPS certificates** | Click *Trust on Windows…* in the panel (Windows and WSL; Windows asks you to confirm) or run `laranest trust` (Ubuntu: asks for your sudo password once; also covers Chrome and Firefox. macOS: adds it to the System Keychain, used by Safari and Chrome, asking for your password). |
+| **Clean URLs (ports 80/443)** | Linux: `laranest setup-ports` (asks for your sudo password once). Windows and macOS need nothing: Laranest uses 80/443 when they are free. Otherwise it picks free ports such as 8080/8443. |
 | **WSL: keep it running** | WSL stops a distro shortly after its last terminal closes. The panel offers to set `instanceIdleTimeout=-1` in your `.wslconfig` and, optionally, to start Laranest when you sign in to Windows. |
 
 ## Using it
@@ -173,10 +178,10 @@ your user PATH.
 | `laranest php …` / `composer …` / `npm …` / `npx …` / `node …` | Run with the current project's runtimes |
 | `laranest which-php` | Which PHP the current folder uses |
 | `laranest php:list` / `php:install <v>` / `php:update [v]` / `php:remove <v>` | Manage PHP versions |
-| `laranest trust [--status]` | Trust the local CA (the Windows user store on Windows and WSL; the system + browsers on Linux) |
+| `laranest trust [--status]` | Trust the local CA (the Windows user store on Windows and WSL; the system + browsers on Linux; the System Keychain on macOS) |
 | `laranest setup-ports` | Allow ports 80/443 without root (Linux) |
 | `laranest shims enable` / `disable` | Plain `php`/`composer` per project |
-| `laranest install` / `uninstall` | Install or remove the background service (systemd user unit; on Windows, the sign-in entry) |
+| `laranest install` / `uninstall` | Install or remove the background service (systemd user unit; on macOS, a launchd agent; on Windows, the sign-in entry) |
 | `laranest serve` | Run the daemon in the foreground |
 
 ### Updating
@@ -184,10 +189,12 @@ your user PATH.
 The panel tells you when a new Laranest is published (*Update now*, or
 *Settings → Check for updates*); from a terminal, `laranest update`. Running
 the installer again does the same. Your apps, settings and PHP versions are
-kept: on Linux the apps keep running meanwhile, on Windows they restart with
-Laranest.
+kept: on Linux the apps keep running meanwhile, on Windows and macOS they restart
+with Laranest.
 
 ### Uninstall
+
+On Linux and macOS:
 
 ```bash
 laranest uninstall        # stops every app and removes the service
@@ -207,7 +214,7 @@ Your projects are never modified, except for `.env` changes you confirm.
 
 A single Go binary with an embedded web UI, an embedded Caddy (reverse proxy,
 FastCGI and a local CA) and systemd user units for every process (on Windows
-the daemon supervises them itself). See
+and macOS the daemon supervises them itself). See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the details: PHP selection,
 the checks behind each warning, HTTPS trust on WSL and Ubuntu, and releases.
 

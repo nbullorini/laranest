@@ -1,11 +1,11 @@
 # Architecture
 
 Laranest is a single Go binary that runs as a **systemd user service** (on
-Windows, a background process started at sign-in). It serves a web panel, runs
+Windows, a background process started at sign-in; on macOS, a launchd agent). It serves a web panel, runs
 each registered Laravel app with its own PHP-FPM pool (php-cgi workers on
 Windows) and workers, and routes `https://<app>.localhost` to them through an
 embedded Caddy. Everything runs as the current user: no root or administrator
-rights, no containers. The Windows specifics are [below](#windows).
+rights, no containers. The Windows and macOS specifics are [below](#windows).
 
 ```
 Browser (Windows or Linux) ──► embedded Caddy (127.0.0.1:80 / :443)
@@ -108,7 +108,7 @@ The same binary, built for Windows, replaces the Linux pieces it can't use:
 | Linux | Windows |
 |---|---|
 | systemd user service + lingering | `laranest install` copies itself to `%LOCALAPPDATA%\Programs\Laranest`, adds that to the user PATH and registers `laranestw.exe` under `HKCU\…\Run`. `laranestw.exe` is a tiny GUI-subsystem launcher (embedded in `laranest.exe`) that starts `laranest serve` with no console window. |
-| Transient systemd units | An in-process supervisor (`internal/units/supervisor_windows.go`): every process runs suspended → in its own **Job Object** (`KILL_ON_JOB_CLOSE`) → resumed, so stopping it kills its whole tree and nothing outlives the daemon, even if it crashes. Restart with the same 1s → 30s backoff; output to a log file and to the live logs. The apps stop with the daemon, and `Boot` starts them again. |
+| Transient systemd units | An in-process supervisor (`internal/units/supervisor.go`, shared with macOS): every process runs suspended → in its own **Job Object** (`KILL_ON_JOB_CLOSE`) → resumed, so stopping it kills its whole tree and nothing outlives the daemon, even if it crashes. Restart with the same 1s → 30s backoff; output to a log file and to the live logs. The apps stop with the daemon, and `Boot` starts them again. |
 | PHP-FPM on a unix socket | `laranest cgi-pool`: 4 `php-cgi -b 127.0.0.1:<port>` workers per app (php-cgi serves one request at a time), restarted when they exit; Caddy load-balances them (`least_conn`, retrying while one restarts). |
 | Static PHP builds (static-php-cli) | The official non-thread-safe x64 builds from windows.php.net (`releases.json`, sha256-checked), with every common extension enabled from `ext\` plus phpredis from PECL, and the Visual C++ runtime DLLs next to `php.exe` (`vcruntime-x64.zip` in the `php` release: a fresh Windows without the Redistributable works too). PHP's OpenSSL doesn't read the Windows store: the CA bundle is Mozilla's list (from curl.se) plus Laranest's CA. |
 | `php` / `composer` symlinks | `php.exe` / `composer.exe` hard links to `laranest.exe` (symlinks need privileges). `execve` doesn't exist: the CLI runs the child on the same console and exits with its code. |
@@ -121,6 +121,20 @@ Not available on Windows: Horizon (`pcntl`): `queue:work` runs instead, and
 the `public/hot` it leaves behind. Windows' socket errors are localized, so
 port problems are explained from the error code (`WSAEADDRINUSE`,
 `WSAEACCES` for ranges reserved by Hyper-V).
+
+## macOS (beta)
+
+macOS has no systemd either; it reuses the Windows supervisor and keeps the
+rest of the Linux pieces:
+
+| Linux | macOS |
+|---|---|
+| systemd user service + lingering | A launchd agent of the user, `~/Library/LaunchAgents/dev.laranest.plist` (`RunAtLoad`, restarted by launchd unless it exits cleanly), loaded with `launchctl bootstrap gui/<uid>` (`user/<uid>` without a desktop session). |
+| Transient systemd units | The in-process supervisor. Each process leads a **process group** of its own: stopping it signals the whole group (SIGTERM, SIGKILL after 8s). Groups outlive their parent, so the running ones are recorded in `state/process-groups.json` with the boot time, and a daemon that starts after a crash kills the ones left behind. |
+| PHP-FPM, logs to journald | The same PHP-FPM pool on a unix socket, logging to stderr, which the supervisor reads. |
+| Static PHP builds | static-php-cli's macOS builds (`common` extension set), until the `php` release has macOS builds of its own (`manifest-macos.json`). |
+| `laranest trust`: system store + NSS | The System Keychain (Safari, Chrome; macOS asks for your password), plus Firefox's profiles when `certutil` is installed (`brew install nss`). |
+| `laranest setup-ports` | Not needed: macOS lets any user listen on 80/443. |
 
 ## Ports
 
@@ -150,6 +164,8 @@ binary, and then:
 - **Linux:** rename it over the installed one (atomic; running processes keep
   the old file) and `systemctl --user restart laranest`; the apps' units keep
   running.
+- **macOS:** the same rename, then `launchctl kickstart -k`; the apps restart
+  with the daemon.
 - **Windows:** run its `install` detached, which stops the daemon (and the
   apps), replaces `%LOCALAPPDATA%\Programs\Laranest\laranest.exe` and starts
   the new one, which starts the apps again.
@@ -172,13 +188,14 @@ The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
 ## Releases
 
 - Every push to main and pull request that touches code runs CI (Linux
-  x64/ARM64: unit tests + an end-to-end smoke test; Windows: unit tests +
-  build) and the full Windows regression (`windows-e2e.yml`, ~15 min).
+  x64/ARM64: unit tests + an end-to-end smoke test; macOS ARM64/Intel: unit
+  tests + an end-to-end test of the launchd install, `test/e2e/macos.sh`;
+  Windows: unit tests + build) and the full Windows regression (`windows-e2e.yml`, ~15 min).
 - `make publish RELEASE=vX.Y.Z` tags the current commit; the Release
   workflow waits for (or reads) that commit's CI and Windows regression on
   main — it doesn't test again, and a failed or missing run stops the
   release — then builds and publishes
-  `laranest-linux-{amd64,arm64}`, `laranest-windows-amd64.exe`, `install.sh`,
+  `laranest-{linux,darwin}-{amd64,arm64}`, `laranest-windows-amd64.exe`, `install.sh`,
   `install.ps1` and `SHA256SUMS`. Binaries embed the version and the commit
   (e.g. `v0.1.1+60680ba`).
 - The PHP workflow rebuilds only the minors with a new patch on php.net (or

@@ -179,7 +179,8 @@ func (t *Tools) installNode(ctx context.Context) error {
 	}
 
 	arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
-	name := fmt.Sprintf("node-%s-linux-%s", version, arch)
+	osName := map[string]string{"linux": "linux", "darwin": "darwin"}[runtime.GOOS]
+	name := fmt.Sprintf("node-%s-%s-%s", version, osName, arch)
 	archive := name + ".tar.gz"
 	if runtime.GOOS == "windows" {
 		name = fmt.Sprintf("node-%s-win-%s", version, arch)

@@ -4,16 +4,17 @@ package selfupdate
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+
+	"github.com/nbullorini/laranest/internal/service"
 )
 
 // Update downloads the latest build, swaps it in place of the running binary
 // (renaming over it is atomic, and running processes keep the old file) and
-// restarts the service. The apps' units keep running meanwhile. fromDaemon:
-// called by the service itself, which systemd is about to restart.
+// restarts the service (systemd on Linux: the apps' units keep running;
+// launchd on macOS). fromDaemon: called by the service itself, which is
+// about to be restarted.
 func Update(ctx context.Context, fromDaemon bool) error {
 	exe, err := executable()
 	if err != nil {
@@ -27,16 +28,5 @@ func Update(ctx context.Context, fromDaemon bool) error {
 		os.Remove(tmp)
 		return err
 	}
-	restart := exec.Command("systemctl", "--user", "restart", "laranest.service")
-	if fromDaemon {
-		// A child of the daemon lives in the service's cgroup, which systemd
-		// kills while restarting it, so systemctl would die mid-way: run it
-		// as a transient unit of its own instead.
-		restart = exec.Command("systemd-run", "--user", "--collect", "--quiet",
-			"systemctl", "--user", "restart", "laranest.service")
-	}
-	if out, err := restart.CombinedOutput(); err != nil {
-		return fmt.Errorf("installed, but restarting the service failed (systemctl --user restart laranest): %w\n%s", err, out)
-	}
-	return nil
+	return service.Restart(fromDaemon)
 }
