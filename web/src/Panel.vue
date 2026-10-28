@@ -7,6 +7,7 @@ import AddAppDialog from './components/AddAppDialog.vue'
 import AppDetail from './components/AppDetail.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import PHPVersions from './components/PHPVersions.vue'
+import McpSetup from './components/McpSetup.vue'
 import { api, browserTrusts, type AppView, type PHPInfo, type System, type TrustStatus, type UpdateStatus, type WSLStatus } from './api'
 import { applyUpdate } from './update'
 import { confirmKeepAlive } from './wsl'
@@ -38,6 +39,7 @@ const selectedId = ref<string | null>(null)
 const showAdd = ref(false)
 const showSettings = ref(false)
 const showPHP = ref(false)
+const showMcp = ref(false)
 const phpUpdates = computed(() => phpInfo.value?.installed.filter((v) => v.update).length ?? 0)
 
 function openApp(id: string) {
@@ -135,11 +137,12 @@ onBeforeUnmount(() => clearInterval(timer))
 
 <template>
   <header class="topbar">
-    <div class="brand"><img src="/logo.png" alt="" class="logo" /> Laranest</div>
+    <div class="brand"><img src="/logo.png" alt="Laranest" class="logo" /> <span class="brand-name">Laranest</span></div>
     <span class="grow" />
     <NBadge :value="phpUpdates" :show="phpUpdates > 0" type="warning">
       <NButton quaternary @click="showPHP = true">PHP</NButton>
     </NBadge>
+    <NButton quaternary title="Connect AI assistants (MCP)" @click="showMcp = true">MCP</NButton>
     <NTooltip>
       <template #trigger>
         <NButton quaternary circle @click="showSettings = true">
@@ -199,6 +202,7 @@ onBeforeUnmount(() => clearInterval(timer))
     @update="(st) => (update = st)"
     @trust="(st) => (trust = st)"
     @php="showSettings = false; showPHP = true" @wsl="(st) => (wsl = st)" />
+  <McpSetup v-model:show="showMcp" :system="system" :wsl="wsl" />
   <PHPVersions v-model:show="showPHP" :info="phpInfo" @changed="(info) => { phpInfo = info; refresh() }" @open-app="openApp" />
   <AppDetail :app="selected" :system="system" :php-info="phpInfo" :groups="groups" @changed="(id) => { onChanged(id); refreshPHP() }" @close="selectedId = null" />
 </template>
@@ -213,6 +217,9 @@ onBeforeUnmount(() => clearInterval(timer))
 .logo { width: 32px; height: 32px; }
 @media (max-width: 480px) {
   .topbar { padding: 10px 16px; }
+}
+@media (max-width: 400px) {
+  .brand-name { display: none; } /* the logo alone leaves room for the buttons */
 }
 @media (max-width: 360px) {
   .add-label { display: none; } /* icon only on the narrowest phones */

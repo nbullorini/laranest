@@ -154,6 +154,16 @@ binary, and then:
   apps), replaces `%LOCALAPPDATA%\Programs\Laranest\laranest.exe` and starts
   the new one, which starts the apps again.
 
+## MCP server
+
+`laranest mcp` (`internal/mcpserver`, on the official Go SDK) speaks the Model
+Context Protocol on stdio for AI clients. It is a thin client of the daemon's
+HTTP API, so assistants get the panel's features with its validations: tools
+to list, inspect, add, update (advanced settings included), start, stop,
+restart and remove apps, read logs, set `.env` values, apply a warning's fix,
+run php/composer/npm/npx/node commands and manage PHP versions. Tools carry
+read-only/destructive hints so clients can ask before the risky ones.
+
 ## Security
 
 The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign

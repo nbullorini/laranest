@@ -21,6 +21,7 @@ import (
 
 	"github.com/nbullorini/laranest/internal/apps"
 	"github.com/nbullorini/laranest/internal/config"
+	"github.com/nbullorini/laranest/internal/mcpserver"
 	"github.com/nbullorini/laranest/internal/selfupdate"
 	"github.com/nbullorini/laranest/internal/server"
 	"github.com/nbullorini/laranest/internal/service"
@@ -36,7 +37,7 @@ func Execute() error {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(serveCmd(), installCmd(), uninstallCmd(), statusCmd(), versionCmd(), updateCmd())
+	root.AddCommand(serveCmd(), installCmd(), uninstallCmd(), statusCmd(), versionCmd(), updateCmd(), mcpCmd())
 	if runtime.GOOS != "windows" { // Windows lets any user listen on 80/443
 		root.AddCommand(setupPortsCmd())
 	}
@@ -180,6 +181,26 @@ func updateCmd() *cobra.Command {
 				fmt.Println("Updated and restarted. Check it with: laranest status")
 			}
 			return nil
+		},
+	}
+}
+
+func mcpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "mcp",
+		Short: "Run the MCP server (stdio) so AI assistants can manage your apps",
+		Long: "Speaks the Model Context Protocol on stdin/stdout. Point your AI client at it, e.g.\n" +
+			"  claude mcp add -s user laranest -- laranest mcp\n" +
+			"It talks to the running Laranest, so assistants can do what the panel does: add and\n" +
+			"configure apps (advanced settings too), start and stop them, read logs and run commands.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			return mcpserver.Run(ctx, cfg.PanelAddr)
 		},
 	}
 }
