@@ -158,6 +158,8 @@ type View struct {
 	DefaultCommands map[string]string `json:"default_commands"`
 	// ShareURL is the app's public address while it is shared.
 	ShareURL string `json:"share_url,omitempty"`
+	// ProjectFile tells whether the project has a laranest.json.
+	ProjectFile bool `json:"project_file"`
 }
 
 func (m *Manager) List() []View {
@@ -248,6 +250,11 @@ func (m *Manager) view(a *App) View {
 		det = &detect.Detection{Path: a.Path}
 	}
 	v.Warnings = append(append(detect.Check(det, ctx), v.Warnings...), m.serviceWarnings(a, det, ctx)...)
+	if w := m.projectWarning(a); w != nil {
+		v.Warnings = append(v.Warnings, *w)
+	}
+	_, err := os.Stat(filepath.Join(a.Path, detect.ProjectFile))
+	v.ProjectFile = err == nil
 	return v
 }
 
@@ -358,10 +365,17 @@ func (m *Manager) Add(req AddRequest) (View, error) {
 		m.mu.Unlock()
 		return View{}, err
 	}
-	a := &App{
-		ID: id, Name: d.Name, Path: d.Path, PHP: req.PHP, Group: group, HTTPS: req.HTTPS == nil || *req.HTTPS,
-		Processes: procs, Detection: d, CreatedAt: time.Now(),
+	a := &App{ID: id, Name: d.Name, Path: d.Path, Group: group, HTTPS: true, Processes: procs, Detection: d, CreatedAt: time.Now()}
+	// The project's laranest.json first; what the user chose when adding it
+	// (the dialog starts from the file's values) wins.
+	m.syncProjectLocked(a)
+	if req.PHP != "" || a.ProjectSum == "" {
+		a.PHP = req.PHP
 	}
+	if req.HTTPS != nil {
+		a.HTTPS = *req.HTTPS
+	}
+	a.Processes = procs
 	m.store.apps[id] = a
 	m.ensureReverbPortLocked(a)
 	if err := m.store.save(); err != nil {
@@ -551,6 +565,12 @@ func (m *Manager) Start(id string) error {
 		// prepare, so don't resolve or download a runtime it won't use.
 		return nil
 	}
+	m.mu.Lock()
+	if m.syncProjectLocked(a) { // the team's laranest.json changed (a git pull)
+		_ = m.store.save()
+		m.applyProxyLocked()
+	}
+	m.mu.Unlock()
 	prep, err := m.prepare(a) // may download: done without holding m.mu
 	if err != nil {
 		return err
@@ -615,9 +635,17 @@ func (m *Manager) Redetect(id string) (View, error) {
 	}
 	m.mu.Lock()
 	a.Detection = d
+	changed := m.syncProjectLocked(a)
 	err = m.store.save()
+	running := m.isRunning(a)
+	if changed {
+		m.applyProxyLocked()
+	}
 	m.mu.Unlock()
 	m.forgetServices(id)
+	if changed && running && err == nil {
+		err = m.Restart(id, "") // its processes changed
+	}
 	return m.view(a), err
 }
 

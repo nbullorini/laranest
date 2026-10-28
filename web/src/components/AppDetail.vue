@@ -115,6 +115,18 @@ function share() {
 }
 const unshare = () => run(() => api.unshare(appId()), 'Sharing stopped')
 
+function saveProject() {
+  const app = props.app!
+  dialog.info({
+    title: app.project_file ? 'Update laranest.json' : 'Create laranest.json',
+    content: `Writes this app's PHP version, HTTPS, processes, custom commands and processes to laranest.json in the project. ` +
+      `Commit it and everyone who adds the project to Laranest gets the same setup. The name, group, dumps and Xdebug stay on this machine.`,
+    positiveText: app.project_file ? 'Update' : 'Create',
+    negativeText: 'Cancel',
+    onPositiveClick: () => run(() => api.saveProject(app.id), 'laranest.json saved'),
+  })
+}
+
 async function copyShare() {
   await navigator.clipboard.writeText(props.app!.share_url!)
   message.success('Link copied')
@@ -344,6 +356,19 @@ function showLogs(process: string) {
                   v-model:web-mode="editWebMode" :processes="editProcs" :defaults="app.default_commands" />
               </NCollapseItem>
             </NCollapse>
+            <div class="project-file">
+              <div>
+                <div class="section-title">laranest.json</div>
+                <span class="muted small">
+                  <template v-if="app.project_file">This project's file sets the team's defaults: it is applied again whenever it
+                    changes (a <code>git pull</code>). Changes made here stay on this machine until then.</template>
+                  <template v-else>Share these settings with your team: save them to the project and commit the file.</template>
+                </span>
+              </div>
+              <NButton size="small" :disabled="dirty" :title="dirty ? 'Save your changes first' : ''" @click="saveProject">
+                {{ app.project_file ? 'Update laranest.json' : 'Save to laranest.json' }}
+              </NButton>
+            </div>
             <div class="row">
               <NButton type="primary" :disabled="!dirty" :loading="busy" @click="save">Save</NButton>
               <span v-if="restartNeeded && app.state !== 'stopped'" class="muted small">The app restarts when saved.</span>
@@ -364,6 +389,8 @@ function showLogs(process: string) {
 .link { color: var(--brand); text-decoration: none; }
 .actions { margin-bottom: 8px; flex-wrap: wrap; }
 .shared { margin-bottom: 10px; }
+.project-file { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+@media (max-width: 560px) { .project-file { flex-direction: column; align-items: flex-start; } }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; word-break: break-all; }

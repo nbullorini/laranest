@@ -35,9 +35,11 @@ type App struct {
 	Dumps    bool `json:"dumps,omitempty"`
 	DumpPort int  `json:"dump_port,omitempty"`
 	// Xdebug loads Xdebug into the web process (step debugging on a trigger).
-	Xdebug    bool              `json:"xdebug,omitempty"`
-	Detection *detect.Detection `json:"detection"`
-	CreatedAt time.Time         `json:"created_at"`
+	Xdebug bool `json:"xdebug,omitempty"`
+	// ProjectSum identifies the laranest.json last applied (projectconfig.go).
+	ProjectSum string            `json:"project_sum,omitempty"`
+	Detection  *detect.Detection `json:"detection"`
+	CreatedAt  time.Time         `json:"created_at"`
 }
 
 type store struct {

@@ -105,7 +105,9 @@ async function inspect(p = path.value) {
     }
     detection.value = res.detection
     id.value = res.suggested_id
-    php.value = ''
+    // A laranest.json in the project sets the defaults (the team's choices).
+    php.value = res.detection.project?.php ?? ''
+    https.value = res.detection.project?.https ?? true
     processes.value = { ...res.detection.recommended }
   } catch (e) {
     inspectError.value = (e as Error).message
@@ -174,6 +176,10 @@ async function add(start: boolean) {
           <span v-if="detection.php_constraint" class="muted">PHP {{ detection.php_constraint }}</span>
           <NTag v-for="(_, pkg) in detection.packages" :key="pkg" size="small" type="info">{{ pkg }}</NTag>
         </div>
+        <NAlert v-if="detection.project" type="info" :show-icon="false">
+          This project has a <code>laranest.json</code>: its settings are applied (PHP, processes, custom commands).
+        </NAlert>
+        <NAlert v-else-if="detection.project_error" type="warning">{{ detection.project_error }}</NAlert>
 
         <div class="grid2">
           <label class="field">

@@ -36,6 +36,10 @@ type Detection struct {
 	ScheduledTasks int       `json:"scheduled_tasks"`
 	Recommended    Processes `json:"recommended"`
 	DetectedAt     time.Time `json:"detected_at"`
+	// Project is the project's laranest.json (its processes are already in
+	// Recommended); ProjectError says why it couldn't be read.
+	Project      *ProjectConfig `json:"project,omitempty"`
+	ProjectError string         `json:"project_error,omitempty"`
 }
 
 // Processes are the optional long-running processes of an app (web is always on).
@@ -105,6 +109,12 @@ func Inspect(path string, phpCmd []string) (*Detection, error) {
 	}
 
 	d.Recommended = recommend(d, loadEnv(path))
+	if cfg, _, err := ReadProject(path); err != nil {
+		d.ProjectError = err.Error()
+	} else if cfg != nil {
+		d.Project = cfg
+		d.Recommended = cfg.ApplyProcesses(d.Recommended)
+	}
 	return d, nil
 }
 

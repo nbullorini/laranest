@@ -359,6 +359,12 @@ func register(s *mcp.Server, c *client) {
 			return textResult(joinLines(lines))
 		})
 
+	mcp.AddTool(s, &mcp.Tool{Name: "save_laranest_json", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: true},
+		Description: "Writes the app's settings (PHP version, HTTPS, processes, custom commands and processes, web mode) to laranest.json in the project, so the team can commit it and everyone runs the project the same way. Laranest applies that file when an app is added and whenever it changes."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in appID) (*mcp.CallToolResult, any, error) {
+			return result(c.do(ctx, http.MethodPost, "/apps/"+url.PathEscape(in.ID)+"/project", nil))
+		})
+
 	mcp.AddTool(s, &mcp.Tool{Name: "get_laravel_log", Annotations: read,
 		Description: "The newest entries of the app's Laravel log (storage/logs), newest first, with the exception and stack trace of each: where errors from requests, jobs and commands end up. Defaults to errors and worse."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in laravelLogInput) (*mcp.CallToolResult, any, error) {

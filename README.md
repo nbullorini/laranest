@@ -19,6 +19,12 @@ starts its workers and serves it at `https://<app>.localhost`.
   searchable, each exception with its stack trace.
 - **`dump()` and `dd()` in the panel** (optional, per app): every dump with the
   file and line that made it and the request or command it came from.
+- **Xdebug per app**, only where you turn it on: step debugging on a trigger
+  (your browser's Xdebug helper, or `XDEBUG_TRIGGER`), with your IDE on port
+  9003. Other apps and processes run without it, at full speed.
+- **`laranest.json` for teams:** save an app's setup (PHP version, processes,
+  custom commands) to the project, commit it, and everyone who adds the project
+  gets the same setup.
 - **Share an app** with a public link (a free Cloudflare quick tunnel, no
   account) to show it to a client or test a webhook; Laravel builds its URLs
   with that address.
@@ -161,6 +167,27 @@ laranest which-php
 `laranest shims enable` makes plain `php` and `composer` do the same in new
 terminals (`laranest shims disable` reverts it). On Windows it adds them to
 your user PATH.
+
+### Team setup: `laranest.json`
+
+*Settings → Save to laranest.json* writes the app's setup to the project.
+Commit it: when someone adds the project, Laranest starts from it, and when it
+changes (after a `git pull`) it is applied again on the next start or
+re-detect. Everything is optional; what is missing stays automatic:
+
+```json
+{
+  "php": "8.4",
+  "https": true,
+  "processes": { "queue": true, "scheduler": true, "vite": true },
+  "commands": { "queue": "php artisan queue:work --queue=high,default" },
+  "custom": [{ "name": "pulse", "command": "php artisan pulse:check" }],
+  "web_mode": ""
+}
+```
+
+The app's name, group, dumps and Xdebug stay on each machine. Changes made in
+the panel stay local until the file changes, or until you save them to it.
 
 ### On Windows
 

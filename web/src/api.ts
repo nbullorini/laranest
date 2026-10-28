@@ -19,6 +19,9 @@ export interface Detection {
   has_vendor: boolean
   scheduled_tasks: number
   recommended: Processes
+  /** The project's laranest.json (its processes are already in recommended). */
+  project?: { php?: string; https?: boolean }
+  project_error?: string
 }
 
 export type ProcState = 'stopped' | 'starting' | 'running' | 'backoff' | 'stopping' | 'failed'
@@ -91,6 +94,8 @@ export interface AppView {
   default_commands: Record<string, string>
   dumps?: boolean
   xdebug?: boolean
+  /** Whether the project has a laranest.json. */
+  project_file: boolean
   /** Public address while the app is shared through a tunnel. */
   share_url?: string
 }
@@ -260,6 +265,7 @@ export const api = {
   setEnv: (id: string, values: Record<string, string>) =>
     request<AppResult>('POST', `/apps/${id}/env`, { values }),
   logsURL: (id: string, process: string) => `/api/apps/${id}/logs/${process}`,
+  saveProject: (id: string) => request<AppResult>('POST', `/apps/${id}/project`),
   share: (id: string) => request<AppResult>('POST', `/apps/${id}/share`),
   unshare: (id: string) => request<AppResult>('DELETE', `/apps/${id}/share`),
   dumps: (id: string, after = 0) => request<Dumps>('GET', `/apps/${id}/dumps?after=${after}`),
