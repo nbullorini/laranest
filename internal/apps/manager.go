@@ -625,8 +625,9 @@ func (m *Manager) SetEnv(id string, values map[string]string) (View, error) {
 
 type System struct {
 	Version    string        `json:"version"`
-	OS         string        `json:"os"`       // linux | windows
-	DataDir    string        `json:"data_dir"` // where PHP & co. are downloaded
+	OS         string        `json:"os"`         // linux | windows
+	Executable string        `json:"executable"` // this laranest binary (for MCP client configs)
+	DataDir    string        `json:"data_dir"`   // where PHP & co. are downloaded
 	PanelURL   string        `json:"panel_url"`
 	Domain     string        `json:"domain"`
 	HTTPPort   int           `json:"http_port"`
@@ -645,7 +646,7 @@ func (m *Manager) System() System {
 	defer m.mu.Unlock()
 	installed := m.rt.Installed()
 	s := System{
-		OS: runtime.GOOS, DataDir: m.rt.DataDir,
+		OS: runtime.GOOS, DataDir: m.rt.DataDir, Executable: executable(),
 		PanelURL: m.PanelURL(), Domain: m.cfg.Domain, HTTPPort: m.cfg.HTTPPort,
 		Runtimes: installed, ScanDirs: m.scanDirsLocked(), CLIOnly: []string{},
 		Installing: m.rt.Installer.Installing(),
@@ -686,6 +687,18 @@ func proxyHint(err error, port int) string {
 			"(without sudo in front: it asks for your password itself, only once) or pick a port ≥ 1024."
 	}
 	return ""
+}
+
+// executable is the installed laranest binary, resolved through symlinks.
+func executable() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "laranest"
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		return real
+	}
+	return exe
 }
 
 // windowsPortHint explains why port can't be used. Windows' error messages

@@ -115,6 +115,26 @@ When the automatic setup isn't enough, *Settings → Advanced* lets you:
 `php`, `composer`, `npm`, `npx` and `node` in those commands are the project's own.
 Placeholders: `{url}`, `{path}`, `{reverb_port}` and, for the web, `{port}`.
 
+### Use it from AI assistants (MCP)
+
+Laranest includes an [MCP](https://modelcontextprotocol.io) server, so Claude,
+Cursor, VS Code or any MCP client can manage your apps: find and add projects,
+read and change their settings (advanced ones too), start and stop them, read
+their logs, fix their warnings and run commands in them. It talks to the
+running Laranest, with the same rules as the panel.
+
+```bash
+claude mcp add -s user laranest -- laranest mcp          # Claude Code
+```
+
+Other clients take a config like this one (the panel's **MCP** button shows
+it with the full path to `laranest`, which desktop apps may need, and, on WSL,
+the variant for AI apps running on Windows):
+
+```json
+{ "mcpServers": { "laranest": { "command": "laranest", "args": ["mcp"] } } }
+```
+
 ### Commands in your project
 
 Use the project's own PHP from its folder:
@@ -149,6 +169,7 @@ your user PATH.
 |---|---|
 | `laranest status` | Service and panel status |
 | `laranest update` | Update Laranest to the latest release |
+| `laranest mcp` | MCP server (stdio) for AI assistants |
 | `laranest php …` / `composer …` / `npm …` / `npx …` / `node …` | Run with the current project's runtimes |
 | `laranest which-php` | Which PHP the current folder uses |
 | `laranest php:list` / `php:install <v>` / `php:update [v]` / `php:remove <v>` | Manage PHP versions |
