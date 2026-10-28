@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="Laranest" width="160"></p>
+
 # Laranest
 
 [![CI](https://github.com/nbullorini/laranest/actions/workflows/ci.yml/badge.svg)](https://github.com/nbullorini/laranest/actions/workflows/ci.yml)
