@@ -23,8 +23,9 @@ starts its workers and serves it at `https://<app>.localhost`.
   command that fixes it (`npm install`, `php artisan migrate`…) to run from
   the panel.
 
-Runs on **Windows 10/11**, **Ubuntu** and **WSL2** (browsing from Windows), on
-x86_64 and ARM64.
+Runs on **Linux** (any distribution with systemd), **WSL2** (browsing from
+Windows) and **Windows 10/11**, on x86_64 and ARM64. See
+[supported platforms](#supported-platforms).
 
 ## Install
 
@@ -46,9 +47,8 @@ inside WSL).
 
 Requirements:
 
-- **Linux / WSL2:** any distribution with systemd — Ubuntu 22.04+, Debian 12+,
-  Fedora, RHEL/Rocky/Alma 9, Arch… (on WSL2, `[boot] systemd=true` in
-  `/etc/wsl.conf`, the default on current Ubuntu images). Run it as your normal
+- **Linux / WSL2:** a distribution with systemd (on WSL2, `[boot]
+  systemd=true` in `/etc/wsl.conf`, the default on current Ubuntu images). Run it as your normal
   user, not root: it puts `laranest` in `~/.local/bin` and starts it as a
   systemd user service, without sudo. On WSL, if your distro logs in as
   `root`, create a user first (`adduser <name>`), set `[user] default=<name>`
@@ -56,6 +56,19 @@ Requirements:
 - **Windows:** 64-bit Windows 10 or 11. Laranest installs into
   `%LOCALAPPDATA%\Programs\Laranest`, adds itself to your PATH and starts in the
   background when you sign in (no window, no administrator rights).
+
+### Supported platforms
+
+| | Platforms |
+|---|---|
+| **Tested** (CI on every change, or by hand) | Ubuntu 24.04 (x86_64, ARM64) and 22.04 · WSL2 with Ubuntu 24.04 · Windows 11 · Windows Server 2025 |
+| **Supported** (same requirements, not tested on every change) | Debian 11, 12, 13 · Ubuntu 20.04+ · RHEL, Rocky and Alma 8, 9, 10 · CentOS Stream 9, 10 · Fedora · Arch, Manjaro, openSUSE, Linux Mint, Pop!_OS · WSL2 with any of them · Windows 10 (64-bit) · Windows on ARM64 (x64 emulation) |
+| **Not supported** | macOS · CentOS 7 and Ubuntu 18.04 (systemd and glibc too old) · distributions without systemd or glibc (Alpine, Void, Devuan, Gentoo with OpenRC) · WSL1 · 32-bit Windows |
+
+On Linux, Laranest needs systemd 236+ with user sessions and glibc 2.28+ (for
+the Node.js it downloads; its PHP builds need only 2.17). On Windows, PHP gets
+the Visual C++ runtime it needs next to it, so nothing has to be installed
+system-wide.
 
 ### Optional, one-time steps
 
