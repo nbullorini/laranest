@@ -167,6 +167,21 @@ export interface LogLine {
   text: string
 }
 
+export interface LaravelLogEntry {
+  time: string
+  env: string
+  level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'
+  message: string
+  details?: string
+}
+
+export interface LaravelLog {
+  files: { name: string; size: number; modified: string }[]
+  file: string
+  entries: LaravelLogEntry[]
+  truncated: boolean
+}
+
 /** Result of an action that may succeed partially (e.g. added but failed to start). */
 export interface AppResult {
   app: AppView
@@ -224,6 +239,11 @@ export const api = {
   setEnv: (id: string, values: Record<string, string>) =>
     request<AppResult>('POST', `/apps/${id}/env`, { values }),
   logsURL: (id: string, process: string) => `/api/apps/${id}/logs/${process}`,
+  laravelLog: (id: string, q: { file?: string; level?: string; q?: string; limit?: number }) =>
+    request<LaravelLog>('GET', `/apps/${id}/laravel-log?${new URLSearchParams(
+      Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))}`),
+  clearLaravelLog: (id: string, file: string) =>
+    request<void>('DELETE', `/apps/${id}/laravel-log?file=${encodeURIComponent(file)}`),
   commands: (id: string) => request<Command[]>('GET', `/apps/${id}/commands`),
   runCommand: (id: string, line: string, fixes = '') => request<Command>('POST', `/apps/${id}/commands`, { line, fixes }),
   command: (id: string, cmd: string) => request<Command>('GET', `/apps/${id}/commands/${cmd}`),

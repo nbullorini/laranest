@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/apps/{id}/detect", s.handleRedetect)
 	mux.HandleFunc("POST /api/apps/{id}/env", s.handleSetEnv)
 	mux.HandleFunc("GET /api/apps/{id}/logs/{process}", s.handleLogs)
+	mux.HandleFunc("GET /api/apps/{id}/laravel-log", s.handleLaravelLog)
+	mux.HandleFunc("DELETE /api/apps/{id}/laravel-log", s.handleClearLaravelLog)
 	mux.HandleFunc("GET /api/apps/{id}/commands", s.handleCommands)
 	mux.HandleFunc("POST /api/apps/{id}/commands", s.handleRunCommand)
 	mux.HandleFunc("GET /api/apps/{id}/commands/{cmd}", s.handleCommand)
@@ -340,6 +343,27 @@ func (s *Server) handleSetEnv(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.apps.SetEnv(r.PathValue("id"), req.Values)
 	respond(w, v, err)
+}
+
+// handleLaravelLog returns the newest entries of the app's storage/logs.
+func (s *Server) handleLaravelLog(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	log, err := s.apps.LaravelLog(r.PathValue("id"), apps.LogQuery{
+		File: q.Get("file"), Level: q.Get("level"), Search: q.Get("q"), Limit: min(limit, 1000)})
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, log)
+}
+
+func (s *Server) handleClearLaravelLog(w http.ResponseWriter, r *http.Request) {
+	if err := s.apps.ClearLaravelLog(r.PathValue("id"), r.URL.Query().Get("file")); err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleCommands lists the commands run from the panel, newest first.
