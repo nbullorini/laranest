@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, ref, watch } from 'vue'
 import {
-  NBadge, NButton, NDrawer, NDrawerContent, NIcon, NInput, NRadioButton, NRadioGroup, NSelect, NSwitch, NTabPane, NTabs,
+  NBadge, NButton, NCollapse, NCollapseItem, NDrawer, NDrawerContent, NIcon, NInput, NRadioButton, NRadioGroup, NSelect, NSwitch, NTabPane, NTabs,
   useDialog, useMessage,
 } from 'naive-ui'
 import { Play, Reader, Refresh, Stop, Sync, Trash } from '@vicons/ionicons5'
@@ -11,8 +11,10 @@ import LogViewer from './LogViewer.vue'
 import CommandsPanel from './CommandsPanel.vue'
 import ProcessToggles from './ProcessToggles.vue'
 import GroupSelect from './GroupSelect.vue'
+import AdvancedProcesses from './AdvancedProcesses.vue'
 import {
-  api, phpOptions, processLabels, type AppResult, type AppView, type PHPInfo, type Processes, type System, type Warning,
+  api, phpOptions, processLabels, type AppResult, type AppView, type CustomProcess, type PHPInfo, type Processes, type System,
+  type Warning,
 } from '../api'
 
 const props = defineProps<{ app: AppView | null; system: System | null; phpInfo: PHPInfo | null; groups: string[] }>()
@@ -32,6 +34,9 @@ const editPhp = ref('')
 const editGroup = ref('')
 const editHttps = ref(true)
 const editProcs = ref<Processes | null>(null)
+const editCommands = ref<Record<string, string>>({})
+const editCustom = ref<CustomProcess[]>([])
+const editWebMode = ref('')
 watch(() => props.app?.id, () => {
   if (!props.app) return
   editId.value = props.app.id
@@ -39,13 +44,22 @@ watch(() => props.app?.id, () => {
   editGroup.value = props.app.group
   editHttps.value = props.app.https
   editProcs.value = { ...props.app.processes }
+  editCommands.value = { ...(props.app.commands ?? {}) }
+  editCustom.value = (props.app.custom ?? []).map((c) => ({ ...c }))
+  editWebMode.value = props.app.web_mode ?? ''
   if (!props.app.procs.some((p) => p.name === logProcess.value)) logProcess.value = 'web'
 }, { immediate: true })
 
 // Changes that restart the app (the group is cosmetic).
+const advancedChanged = computed(() => !!props.app && (
+  JSON.stringify(editCommands.value) !== JSON.stringify(props.app.commands ?? {}) ||
+  JSON.stringify(editCustom.value) !== JSON.stringify(props.app.custom ?? []) ||
+  editWebMode.value !== (props.app.web_mode ?? '')))
 const restartNeeded = computed(() => !!props.app && (
   editId.value !== props.app.id || editPhp.value !== props.app.php ||
-  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes)))
+  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes) || advancedChanged.value))
+const customized = computed(() => !!props.app && (
+  Object.keys(props.app.commands ?? {}).length > 0 || (props.app.custom ?? []).length > 0 || !!props.app.web_mode))
 const dirty = computed(() => restartNeeded.value ||
   (!!props.app && (editGroup.value !== props.app.group || editHttps.value !== props.app.https)))
 
@@ -110,7 +124,11 @@ function runCommand(w: Warning) {
 function save() {
   const id = appId()
   run(() => api.update(id, restartNeeded.value
-    ? { id: editId.value !== id ? editId.value : undefined, group: editGroup.value, https: editHttps.value, php: editPhp.value, processes: editProcs.value ?? undefined }
+    ? {
+        id: editId.value !== id ? editId.value : undefined, group: editGroup.value, https: editHttps.value, php: editPhp.value,
+        processes: editProcs.value ?? undefined,
+        ...(advancedChanged.value ? { commands: editCommands.value, custom: editCustom.value, web_mode: editWebMode.value } : {}),
+      }
     : { group: editGroup.value, https: editHttps.value }), 'Changes saved')
 }
 
@@ -248,6 +266,12 @@ function showLogs(process: string) {
               <div class="section-title">Processes</div>
               <ProcessToggles v-if="editProcs" v-model="editProcs" :detection="app.detection" />
             </div>
+            <NCollapse :default-expanded-names="customized ? ['advanced'] : []">
+              <NCollapseItem name="advanced" :title="customized ? 'Advanced (customized)' : 'Advanced: commands and custom processes'">
+                <AdvancedProcesses v-if="editProcs" v-model:commands="editCommands" v-model:custom="editCustom"
+                  v-model:web-mode="editWebMode" :processes="editProcs" :defaults="app.default_commands" />
+              </NCollapseItem>
+            </NCollapse>
             <div class="row">
               <NButton type="primary" :disabled="!dirty" :loading="busy" @click="save">Save</NButton>
               <span v-if="restartNeeded && app.state !== 'stopped'" class="muted small">The app restarts when saved.</span>
