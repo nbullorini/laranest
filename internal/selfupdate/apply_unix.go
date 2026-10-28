@@ -27,11 +27,15 @@ func Update(ctx context.Context, fromDaemon bool) error {
 		os.Remove(tmp)
 		return err
 	}
-	args := []string{"--user", "restart", "laranest.service"}
+	restart := exec.Command("systemctl", "--user", "restart", "laranest.service")
 	if fromDaemon {
-		args = []string{"--user", "--no-block", "restart", "laranest.service"} // don't wait for our own death
+		// A child of the daemon lives in the service's cgroup, which systemd
+		// kills while restarting it, so systemctl would die mid-way: run it
+		// as a transient unit of its own instead.
+		restart = exec.Command("systemd-run", "--user", "--collect", "--quiet",
+			"systemctl", "--user", "restart", "laranest.service")
 	}
-	if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
+	if out, err := restart.CombinedOutput(); err != nil {
 		return fmt.Errorf("installed, but restarting the service failed (systemctl --user restart laranest): %w\n%s", err, out)
 	}
 	return nil
