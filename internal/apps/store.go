@@ -16,17 +16,23 @@ import (
 
 // App is a registered project, as persisted in apps.json.
 type App struct {
-	ID         string            `json:"id"` // slug, also the subdomain
-	Name       string            `json:"name"`
-	Group      string            `json:"group"` // free-form, for grouping in the panel; "" = none
-	Path       string            `json:"path"`
-	PHP        string            `json:"php"`   // "" = pick automatically
-	HTTPS      bool              `json:"https"` // served over TLS with Laranest's local CA
-	Processes  detect.Processes  `json:"processes"`
-	Autostart  bool              `json:"autostart"` // was running when last touched; restarted with the daemon
-	ReverbPort int               `json:"reverb_port"`
-	Detection  *detect.Detection `json:"detection"`
-	CreatedAt  time.Time         `json:"created_at"`
+	ID         string           `json:"id"` // slug, also the subdomain
+	Name       string           `json:"name"`
+	Group      string           `json:"group"` // free-form, for grouping in the panel; "" = none
+	Path       string           `json:"path"`
+	PHP        string           `json:"php"`   // "" = pick automatically
+	HTTPS      bool             `json:"https"` // served over TLS with Laranest's local CA
+	Processes  detect.Processes `json:"processes"`
+	Autostart  bool             `json:"autostart"` // was running when last touched; restarted with the daemon
+	ReverbPort int              `json:"reverb_port"`
+	// Advanced settings (see custom.go): command overrides of built-in
+	// processes, extra processes, and serving the web through a port.
+	Commands  map[string]string `json:"commands,omitempty"`
+	Custom    []CustomProcess   `json:"custom,omitempty"`
+	WebMode   string            `json:"web_mode,omitempty"`
+	WebPort   int               `json:"web_port,omitempty"`
+	Detection *detect.Detection `json:"detection"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
 type store struct {

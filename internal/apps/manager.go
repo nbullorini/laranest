@@ -149,6 +149,8 @@ type View struct {
 	PHPSource  string           `json:"php_source"` // system | laranest | "" (to download)
 	Procs      []units.Status   `json:"procs"`
 	Warnings   []detect.Warning `json:"warnings"`
+	// DefaultCommands is what each built-in process runs unless overridden.
+	DefaultCommands map[string]string `json:"default_commands"`
 }
 
 func (m *Manager) List() []View {
@@ -178,7 +180,7 @@ func (m *Manager) Get(id string) (View, error) {
 
 func (m *Manager) view(a *App) View {
 	m.mu.Lock()
-	v := View{App: a, URL: m.appURL(a), State: "stopped", Procs: []units.Status{}}
+	v := View{App: a, URL: m.appURL(a), State: "stopped", Procs: []units.Status{}, DefaultCommands: defaultCommands(a)}
 	if a.Processes.Reverb {
 		scheme := "ws://"
 		if a.HTTPS {
@@ -301,7 +303,7 @@ func (m *Manager) LogUnit(id, process string) (string, error) {
 	if m.store.apps[id] == nil {
 		return "", ErrNotFound
 	}
-	if !slices.Contains(processOrder, process) {
+	if !slices.Contains(processNames(m.store.apps[id]), process) {
 		return "", fmt.Errorf("unknown process: %q", process)
 	}
 	return unitName(id, process), nil
@@ -374,6 +376,10 @@ type UpdateRequest struct {
 	HTTPS     *bool             `json:"https"`
 	PHP       *string           `json:"php"`
 	Processes *detect.Processes `json:"processes"`
+	// Advanced (nil = unchanged): see custom.go.
+	Commands *map[string]string `json:"commands"`
+	Custom   *[]CustomProcess   `json:"custom"`
+	WebMode  *string            `json:"web_mode"`
 }
 
 // Update changes settings; a running app is restarted when a setting that
@@ -401,6 +407,22 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 			return View{}, err
 		}
 	}
+	if req.Commands != nil || req.Custom != nil || req.WebMode != nil {
+		commands, custom, webMode := a.Commands, a.Custom, a.WebMode
+		if req.Commands != nil {
+			commands = *req.Commands
+		}
+		if req.Custom != nil {
+			custom = *req.Custom
+		}
+		if req.WebMode != nil {
+			webMode = *req.WebMode
+		}
+		if err := validateAdvanced(commands, custom, webMode); err != nil {
+			m.mu.Unlock()
+			return View{}, err
+		}
+	}
 	if req.PHP != nil && *req.PHP != "" {
 		// Must be installed or downloadable, or the restart would leave the app down.
 		if _, _, err := m.rt.Plan(*req.PHP, php.Requirement{}); err != nil {
@@ -416,7 +438,7 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 	if req.HTTPS != nil {
 		a.HTTPS = *req.HTTPS
 	}
-	if req.ID == nil && req.PHP == nil && req.Processes == nil {
+	if req.ID == nil && req.PHP == nil && req.Processes == nil && req.Commands == nil && req.Custom == nil && req.WebMode == nil {
 		err := m.store.save()
 		if req.HTTPS != nil {
 			m.applyProxyLocked()
@@ -442,6 +464,23 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 	if req.Processes != nil {
 		a.Processes = supported(*req.Processes)
 		m.ensureReverbPortLocked(a)
+	}
+	if req.Commands != nil {
+		a.Commands = map[string]string{}
+		for name, line := range *req.Commands {
+			if strings.TrimSpace(line) != "" { // empty = back to automatic
+				a.Commands[name] = strings.TrimSpace(line)
+			}
+		}
+	}
+	if req.Custom != nil {
+		a.Custom = *req.Custom
+	}
+	if req.WebMode != nil {
+		a.WebMode = *req.WebMode
+		if a.WebMode != WebModePort {
+			a.WebPort = 0
+		}
 	}
 	err := m.store.save()
 	m.applyProxyLocked()
@@ -766,8 +805,9 @@ func (m *Manager) PanelURL() string {
 // prepared is what starting an app needs that may involve downloads; it is
 // resolved before taking m.mu so a PHP download doesn't block the API.
 type prepared struct {
-	rt      php.Runtime
-	nodeBin string // dir with node/npm, when Vite is enabled
+	rt       php.Runtime
+	nodeBin  string // dir with node/npm, when Vite or a custom command uses them
+	composer string // composer.phar, when a custom command uses it
 }
 
 func (m *Manager) prepare(a *App) (prepared, error) {
@@ -778,8 +818,13 @@ func (m *Manager) prepare(a *App) (prepared, error) {
 		return prepared{}, err
 	}
 	p := prepared{rt: rt}
-	if a.Processes.Vite {
+	if a.Processes.Vite || usesTool(a, "npm", "npx", "node") {
 		if p.nodeBin, err = m.rt.Tools.NodeBinDir(ctx); err != nil {
+			return p, err
+		}
+	}
+	if usesTool(a, "composer") {
+		if p.composer, err = m.rt.Tools.ComposerPhar(ctx); err != nil {
 			return p, err
 		}
 	}
@@ -799,7 +844,10 @@ func (m *Manager) startLocked(a *App, prep prepared) error {
 			m.ensureReverbPortLocked(a)
 			slog.Info("reverb port taken by another program: moved", "app", a.ID, "from", old, "to", a.ReverbPort)
 		}
-		if runtime.GOOS == "windows" {
+		if a.WebMode == WebModePort && (a.WebPort == 0 || portInUse(a.WebPort)) {
+			a.WebPort = m.freePortLocked()
+		}
+		if runtime.GOOS == "windows" && a.WebMode != WebModePort {
 			port, err := m.freeCGIPortsLocked(a.ID)
 			if err != nil {
 				return err
@@ -808,10 +856,10 @@ func (m *Manager) startLocked(a *App, prep prepared) error {
 		}
 	}
 	specs, err := m.specs(a, prep)
-	if err != nil {
+	if len(specs) == 0 {
 		return err
 	}
-	var errs []error
+	errs := []error{err} // processes whose command can't run; the others start
 	for _, s := range specs {
 		if err := m.units.Start(context.Background(), s); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
@@ -831,7 +879,7 @@ func (m *Manager) stopLocked(a *App) {
 	viteRan := runtime.GOOS == "windows" &&
 		m.units.Status(context.Background(), unitName(a.ID, "vite"), "vite").State != units.StateStopped
 	var wg sync.WaitGroup
-	for _, name := range processOrder {
+	for _, name := range processNames(a) {
 		wg.Add(1)
 		go func() { defer wg.Done(); _ = m.units.Stop(context.Background(), unitName(a.ID, name)) }()
 	}
@@ -902,7 +950,9 @@ func (m *Manager) isRunning(a *App) bool {
 func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 	rt := prep.rt
 	var web []string
-	if runtime.GOOS == "windows" {
+	if a.WebMode == WebModePort {
+		// Filled in below, once PATH is known.
+	} else if runtime.GOOS == "windows" {
 		self, err := os.Executable()
 		if err != nil {
 			return nil, err
@@ -952,6 +1002,12 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 	artisan := func(name string, args ...string) units.Spec {
 		return spec(name, rt.Command(append([]string{"artisan"}, args...)...)...)
 	}
+	if a.WebMode == WebModePort {
+		var err error
+		if web, err = m.resolveCommand(a, a.Commands["web"], prep, path); err != nil {
+			return nil, fmt.Errorf("web: %w", err)
+		}
+	}
 	specs := []units.Spec{spec("web", web...)}
 	p := a.Processes
 	if p.Horizon {
@@ -979,7 +1035,35 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 	if p.Vite {
 		specs = append(specs, spec("vite", tools.NodeCommand(prep.nodeBin, "npm", "run", "dev")...))
 	}
-	return specs, nil
+	// Overrides replace the automatic command of a built-in process. A
+	// command that can't run (a program that isn't installed) only keeps its
+	// own process down: the rest of the app starts, and the error is reported.
+	var errs []error
+	resolved := specs[:0]
+	for _, s := range specs {
+		if line, ok := a.Commands[s.Name]; ok && s.Name != "web" {
+			cmd, err := m.resolveCommand(a, line, prep, path)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
+				continue
+			}
+			s.Cmd = cmd
+		}
+		resolved = append(resolved, s)
+	}
+	specs = resolved
+	for _, c := range a.Custom {
+		if c.Disabled {
+			continue
+		}
+		cmd, err := m.resolveCommand(a, c.Command, prep, path)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", c.Name, err))
+			continue
+		}
+		specs = append(specs, spec(c.Name, cmd...))
+	}
+	return specs, errors.Join(errs...)
 }
 
 // laravelMajor returns the installed framework's major version (0 if unknown).
@@ -1003,8 +1087,12 @@ func (m *Manager) applyProxyLocked() error {
 	var sites []proxy.Site
 	for _, a := range m.store.list() {
 		s := proxy.Site{Host: m.appHost(a.ID), Root: filepath.Join(a.Path, "public"), HTTPS: a.HTTPS}
-		if m.isRunning(a) {
+		if m.isRunning(a) && a.WebMode == WebModePort {
+			s.Upstream = "127.0.0.1:" + strconv.Itoa(a.WebPort)
+		} else if m.isRunning(a) {
 			s.FastCGI = m.fastCGILocked(a)
+		}
+		if m.isRunning(a) {
 			if a.Processes.Reverb {
 				s.ReverbHost = m.reverbHost(a.ID)
 				s.ReverbAddr = "127.0.0.1:" + strconv.Itoa(a.ReverbPort)
@@ -1039,9 +1127,16 @@ func (m *Manager) ensureReverbPortLocked(a *App) {
 	if !a.Processes.Reverb || a.ReverbPort != 0 {
 		return
 	}
+	a.ReverbPort = m.freePortLocked()
+}
+
+// freePortLocked picks a free port in 18080–18999 that no app has kept for
+// Reverb or its web command.
+func (m *Manager) freePortLocked() int {
 	used := map[int]bool{}
 	for _, o := range m.store.apps {
 		used[o.ReverbPort] = true
+		used[o.WebPort] = true
 	}
 	for port := 18080; port < 19000; port++ {
 		if used[port] {
@@ -1049,10 +1144,10 @@ func (m *Manager) ensureReverbPortLocked(a *App) {
 		}
 		if ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port)); err == nil {
 			ln.Close()
-			a.ReverbPort = port
-			return
+			return port
 		}
 	}
+	return 0
 }
 
 func (m *Manager) validateID(id, current string) error {
@@ -1156,7 +1251,19 @@ func supported(p detect.Processes) detect.Processes {
 	return p
 }
 
+// enabledProcesses lists what runs for the app: the built-in processes, then
+// the enabled custom ones.
 func enabledProcesses(a *App) []string {
+	names := enabledBuiltins(a)
+	for _, c := range a.Custom {
+		if !c.Disabled {
+			names = append(names, c.Name)
+		}
+	}
+	return names
+}
+
+func enabledBuiltins(a *App) []string {
 	on := map[string]bool{
 		"web":       true,
 		"queue":     a.Processes.Queue && !a.Processes.Horizon,

@@ -33,7 +33,10 @@ type Site struct {
 	// FastCGI are the app's PHP upstreams as Caddy dial addresses: the FPM
 	// socket ("unix//run/…/app.sock") or php-cgi workers ("127.0.0.1:19100").
 	// Empty when the app is stopped.
-	FastCGI    []string
+	FastCGI []string
+	// Upstream is an HTTP server that serves the whole app instead (a web
+	// command listening on a port: Octane, a custom server).
+	Upstream   string
 	ReverbHost string // reverb-miapp.localhost; "" if Reverb is off
 	ReverbAddr string // 127.0.0.1:8xxx
 	HTTPS      bool   // served over TLS; plain HTTP redirects to it
@@ -129,7 +132,7 @@ func (p *Proxy) config(sites []Site, withTLS bool) obj {
 		var routes []obj
 		if s.ReverbHost != "" {
 			hosts = append(hosts, s.ReverbHost)
-			if len(s.FastCGI) > 0 {
+			if len(s.FastCGI) > 0 || s.Upstream != "" {
 				routes = append(routes, obj{
 					"match":    []obj{{"host": []string{s.ReverbHost}}},
 					"handle":   []obj{reverseProxy(s.ReverbAddr)},
@@ -206,6 +209,9 @@ func portSuffix(addr, defaultPort string) string {
 // siteRoutes mimics Laravel's public/ front controller: existing static files
 // are served directly, everything else goes to index.php over FastCGI.
 func siteRoutes(s Site, panelURL string) []obj {
+	if s.Upstream != "" {
+		return []obj{{"handle": []obj{reverseProxy(s.Upstream)}}}
+	}
 	if len(s.FastCGI) == 0 {
 		return []obj{{"handle": []obj{staticPage(503, "App stopped",
 			"The app "+s.Host+" is stopped. Start it from the panel.", panelURL)}}}

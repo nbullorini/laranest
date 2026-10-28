@@ -101,6 +101,20 @@ The **PHP** view lists every version, checks for updates and applies them
 Laranest does not start databases, Redis or mail servers: it connects to the
 ones your `.env` points at and tells you when they are down or misconfigured.
 
+### Advanced: your own commands and processes
+
+When the automatic setup isn't enough, *Settings → Advanced* lets you:
+
+- **change the command** of a built-in process (e.g. `php artisan queue:work --queue=high,default`);
+- **add processes**: anything the project needs running (`php artisan pulse:check`,
+  `stripe listen --forward-to {url}/stripe/webhook`…), supervised and with logs like the others;
+- **serve the web through a port** instead of PHP-FPM/php-cgi, for Laravel Octane or
+  a custom server: `php artisan octane:start --port={port}` (Laranest picks the port
+  and keeps the app's HTTPS URL).
+
+`php`, `composer`, `npm`, `npx` and `node` in those commands are the project's own.
+Placeholders: `{url}`, `{path}`, `{reverb_port}` and, for the web, `{port}`.
+
 ### Commands in your project
 
 Use the project's own PHP from its folder:

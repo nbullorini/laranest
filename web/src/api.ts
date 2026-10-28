@@ -83,6 +83,18 @@ export interface AppView {
   php_source: 'system' | 'laranest' | ''
   procs: ProcStatus[]
   warnings: Warning[]
+  /** Advanced: command overrides, extra processes and the web mode. */
+  commands?: Record<string, string>
+  custom?: CustomProcess[]
+  web_mode?: '' | 'port'
+  /** What each built-in process runs unless overridden. */
+  default_commands: Record<string, string>
+}
+
+export interface CustomProcess {
+  name: string
+  command: string
+  disabled?: boolean
 }
 
 export interface Runtime {
@@ -198,7 +210,10 @@ export const api = {
     request<{ detection: Detection; suggested_id: string; error?: string }>('POST', '/inspect', { path }),
   add: (req: { path: string; id: string; group: string; https: boolean; php: string; processes: Processes; start: boolean }) =>
     request<AppResult>('POST', '/apps', req),
-  update: (id: string, patch: { id?: string; group?: string; https?: boolean; php?: string; processes?: Processes }) =>
+  update: (id: string, patch: {
+    id?: string; group?: string; https?: boolean; php?: string; processes?: Processes
+    commands?: Record<string, string>; custom?: CustomProcess[]; web_mode?: string
+  }) =>
     request<AppResult>('PATCH', `/apps/${id}`, patch),
   remove: (id: string) => request<void>('DELETE', `/apps/${id}`),
   start: (id: string) => request<AppResult>('POST', `/apps/${id}/start`),
