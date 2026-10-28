@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nbullorini/laranest/internal/dotenv"
+	"github.com/nbullorini/laranest/internal/wsl"
 )
 
 type Level string
@@ -109,14 +110,59 @@ func Check(d *Detection, ctx Context) []Warning {
 			Fix:     map[string]string{"APP_URL": ctx.URL},
 			Current: currentValues(env, "APP_URL")})
 	}
-	if !writable(filepath.Join(d.Path, "storage")) || !writable(filepath.Join(d.Path, "bootstrap", "cache")) {
-		add(Warning{Level: LevelError, Code: "storage", Message: "storage/ or bootstrap/cache/ are not writable by your user",
-			Hint: "sudo chown -R $USER storage bootstrap/cache"})
-	}
+	ws = append(ws, checkWritable(d.Path)...)
+	ws = append(ws, checkWindowsDisk(d.Path, wsl.IsWSL())...)
 
 	ws = append(ws, checkReverb(d, env, ctx)...)
 	ws = append(ws, checkFrontend(d, ctx)...)
 	return ws
+}
+
+// writableDirs are where Laravel writes while serving requests and running
+// commands. Checking only storage/ misses the usual case of a project once
+// served by Apache: storage/ is yours, but logs/ and framework/* belong to
+// www-data.
+var writableDirs = []string{
+	"storage", "storage/logs", "storage/framework", "storage/framework/cache",
+	"storage/framework/sessions", "storage/framework/views", "bootstrap/cache",
+}
+
+// checkWritable reports the folders Laravel must write to that your user
+// can't. Laranest runs everything as your user, so fixing it is the user's
+// call (it may need sudo or an administrator), never something it does.
+func checkWritable(path string) []Warning {
+	var bad []string
+	for _, rel := range writableDirs {
+		dir := filepath.Join(path, filepath.FromSlash(rel))
+		if info, err := os.Stat(dir); err == nil && info.IsDir() && !writable(dir) {
+			bad = append(bad, rel)
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	hint := "Make them yours: sudo chown -R $USER storage bootstrap/cache (in the project)"
+	if runtime.GOOS == "windows" {
+		hint = `Give your user write access: icacls storage bootstrap\cache /grant "%USERNAME%":(OI)(CI)M /T ` +
+			"(in the project; from an administrator terminal if the folder belongs to someone else), " +
+			"move the project into a folder of yours, or allow PHP in Windows Security → Controlled folder access"
+	}
+	return []Warning{{Level: LevelError, Code: "storage",
+		Message: "Laravel can't write to " + strings.Join(bad, ", ") + ": these folders are not writable by your user",
+		Hint:    hint}}
+}
+
+// checkWindowsDisk warns about projects on a Windows drive seen from WSL
+// (/mnt/c, /mnt/d…): every file access crosses the WSL/Windows boundary, and
+// Vite's file watcher gets no change events there.
+func checkWindowsDisk(path string, isWSL bool) []Warning {
+	if !isWSL || !strings.HasPrefix(path, "/mnt/") {
+		return nil
+	}
+	return []Warning{{Level: LevelWarning, Code: "wsl_windows_disk",
+		Message: "The project is on a Windows drive (" + path + "): from WSL it is very slow, and Vite doesn't notice file changes",
+		Hint: "Move it into Linux (e.g. ~/projects), or run it with Laranest for Windows; " +
+			"for Vite, set server.watch.usePolling: true in vite.config"}}
 }
 
 // checkConfigCache looks at `php artisan config:cache`'s output. Built in
