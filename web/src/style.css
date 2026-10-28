@@ -1,5 +1,5 @@
 :root {
-  --brand: #f05340;
+  --brand: #c62d22; /* deep enough for text on white */
   --surface: #ffffff;
   --border: #e4e4ea;
   --chip: #f1f1f4;
@@ -7,6 +7,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --brand: #f05340; /* bright enough for text on dark */
     --surface: #18181c;
     --border: #2c2c32;
     --chip: #26262c;

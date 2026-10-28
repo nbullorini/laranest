@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NAlert, NBadge, NButton, NIcon, NTooltip, useDialog, useMessage } from 'naive-ui'
-import { Add, Cube, FileTray, Settings } from '@vicons/ionicons5'
+import { Add, FileTray, Settings } from '@vicons/ionicons5'
 import AppsTable from './components/AppsTable.vue'
 import AddAppDialog from './components/AddAppDialog.vue'
 import AppDetail from './components/AppDetail.vue'
@@ -135,7 +135,7 @@ onBeforeUnmount(() => clearInterval(timer))
 
 <template>
   <header class="topbar">
-    <div class="brand"><NIcon :component="Cube" /> Laranest</div>
+    <div class="brand"><img src="/logo.png" alt="" class="logo" /> Laranest</div>
     <span class="grow" />
     <NBadge :value="phpUpdates" :show="phpUpdates > 0" type="warning">
       <NButton quaternary @click="showPHP = true">PHP</NButton>
@@ -210,6 +210,7 @@ onBeforeUnmount(() => clearInterval(timer))
   position: sticky; top: 0; z-index: 10;
 }
 .brand { font-weight: 700; font-size: 1.1rem; color: var(--brand); display: flex; gap: 8px; align-items: center; }
+.logo { width: 32px; height: 32px; }
 @media (max-width: 480px) {
   .topbar { padding: 10px 16px; }
 }
