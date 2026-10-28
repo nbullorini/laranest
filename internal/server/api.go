@@ -50,6 +50,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/apps/{id}/detect", s.handleRedetect)
 	mux.HandleFunc("POST /api/apps/{id}/env", s.handleSetEnv)
 	mux.HandleFunc("GET /api/apps/{id}/logs/{process}", s.handleLogs)
+	mux.HandleFunc("POST /api/apps/{id}/project", s.handleSaveProject)
 	mux.HandleFunc("POST /api/apps/{id}/share", s.handleShare)
 	mux.HandleFunc("DELETE /api/apps/{id}/share", s.handleUnshare)
 	mux.HandleFunc("GET /api/apps/{id}/dumps", s.handleDumps)
@@ -347,6 +348,12 @@ func (s *Server) handleSetEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v, err := s.apps.SetEnv(r.PathValue("id"), req.Values)
+	respond(w, v, err)
+}
+
+// handleSaveProject writes the app's settings to the project's laranest.json.
+func (s *Server) handleSaveProject(w http.ResponseWriter, r *http.Request) {
+	v, err := s.apps.SaveProject(r.PathValue("id"))
 	respond(w, v, err)
 }
 

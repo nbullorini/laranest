@@ -37,6 +37,9 @@ type Release struct {
 	// …or one archive per SAPI (static-php-cli's layout).
 	CLIURL string `json:"cli_url,omitempty"`
 	FPMURL string `json:"fpm_url,omitempty"`
+	// Xdebug built for this PHP (our Linux builds), loaded by apps that debug.
+	XdebugURL    string `json:"xdebug_url,omitempty"`
+	XdebugSHA256 string `json:"-"`
 	// Headers authenticate the download (private GitHub release).
 	Headers map[string]string `json:"-"`
 }
@@ -148,6 +151,8 @@ func (c *Catalog) fromManifest(ctx context.Context) ([]Release, error) {
 			Arch    string `json:"arch"`
 			URL     string `json:"url"`
 			SHA256  string `json:"sha256"`
+			Xdebug  string `json:"xdebug_url"`
+			XSHA256 string `json:"xdebug_sha256"`
 		} `json:"php"`
 	}
 	if err := json.Unmarshal(body, &m); err != nil {
@@ -158,13 +163,17 @@ func (c *Catalog) fromManifest(ctx context.Context) ([]Release, error) {
 		if p.Arch != arch() {
 			continue
 		}
-		rel := Release{Version: p.Version, Minor: minorOf(p.Version), Source: SourceLaranest, URL: p.URL, SHA256: p.SHA256}
+		rel := Release{Version: p.Version, Minor: minorOf(p.Version), Source: SourceLaranest, URL: p.URL, SHA256: p.SHA256,
+			XdebugURL: p.Xdebug, XdebugSHA256: p.XSHA256}
 		if assets != nil {
 			api, ok := assets[path.Base(p.URL)]
 			if !ok {
 				continue
 			}
 			rel.URL, rel.Headers = api, headers
+			if rel.XdebugURL != "" {
+				rel.XdebugURL = assets[path.Base(p.Xdebug)]
+			}
 		}
 		out = append(out, rel)
 	}

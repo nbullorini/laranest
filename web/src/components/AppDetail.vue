@@ -39,6 +39,7 @@ const editProcs = ref<Processes | null>(null)
 const editCommands = ref<Record<string, string>>({})
 const editCustom = ref<CustomProcess[]>([])
 const editWebMode = ref('')
+const editXdebug = ref(false)
 watch(() => props.app?.id, () => {
   if (!props.app) return
   editId.value = props.app.id
@@ -49,6 +50,7 @@ watch(() => props.app?.id, () => {
   editCommands.value = { ...(props.app.commands ?? {}) }
   editCustom.value = (props.app.custom ?? []).map((c) => ({ ...c }))
   editWebMode.value = props.app.web_mode ?? ''
+  editXdebug.value = !!props.app.xdebug
   if (!props.app.procs.some((p) => p.name === logProcess.value)) logProcess.value = 'web'
 }, { immediate: true })
 
@@ -59,7 +61,8 @@ const advancedChanged = computed(() => !!props.app && (
   editWebMode.value !== (props.app.web_mode ?? '')))
 const restartNeeded = computed(() => !!props.app && (
   editId.value !== props.app.id || editPhp.value !== props.app.php ||
-  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes) || advancedChanged.value))
+  JSON.stringify(editProcs.value) !== JSON.stringify(props.app.processes) || advancedChanged.value ||
+  editXdebug.value !== !!props.app.xdebug))
 const customized = computed(() => !!props.app && (
   Object.keys(props.app.commands ?? {}).length > 0 || (props.app.custom ?? []).length > 0 || !!props.app.web_mode))
 const dirty = computed(() => restartNeeded.value ||
@@ -112,6 +115,18 @@ function share() {
 }
 const unshare = () => run(() => api.unshare(appId()), 'Sharing stopped')
 
+function saveProject() {
+  const app = props.app!
+  dialog.info({
+    title: app.project_file ? 'Update laranest.json' : 'Create laranest.json',
+    content: `Writes this app's PHP version, HTTPS, processes, custom commands and processes to laranest.json in the project. ` +
+      `Commit it and everyone who adds the project to Laranest gets the same setup. The name, group, dumps and Xdebug stay on this machine.`,
+    positiveText: app.project_file ? 'Update' : 'Create',
+    negativeText: 'Cancel',
+    onPositiveClick: () => run(() => api.saveProject(app.id), 'laranest.json saved'),
+  })
+}
+
 async function copyShare() {
   await navigator.clipboard.writeText(props.app!.share_url!)
   message.success('Link copied')
@@ -156,7 +171,7 @@ function save() {
   run(() => api.update(id, restartNeeded.value
     ? {
         id: editId.value !== id ? editId.value : undefined, group: editGroup.value, https: editHttps.value, php: editPhp.value,
-        processes: editProcs.value ?? undefined,
+        processes: editProcs.value ?? undefined, xdebug: editXdebug.value !== !!props.app?.xdebug ? editXdebug.value : undefined,
         ...(advancedChanged.value ? { commands: editCommands.value, custom: editCustom.value, web_mode: editWebMode.value } : {}),
       }
     : { group: editGroup.value, https: editHttps.value }), 'Changes saved')
@@ -316,6 +331,20 @@ function showLogs(process: string) {
                   </span>
                 </div>
               </div>
+              <div class="field">
+                <span>Xdebug</span>
+                <div class="row">
+                  <NSwitch v-model:value="editXdebug" :disabled="app.web_mode === 'port'" />
+                  <span class="clickable small muted" @click="app.web_mode !== 'port' && (editXdebug = !editXdebug)">
+                    {{ app.web_mode === 'port' ? 'Not with a custom web command'
+                      : editXdebug ? 'Step debugging on a trigger, IDE on port 9003' : 'Off' }}
+                  </span>
+                </div>
+                <small v-if="editXdebug && !app.xdebug" class="muted">
+                  Start a session with your browser's Xdebug helper extension (or XDEBUG_TRIGGER) while your IDE listens on
+                  port 9003. Only the web requests load it.
+                </small>
+              </div>
             </div>
             <div>
               <div class="section-title">Processes</div>
@@ -327,6 +356,19 @@ function showLogs(process: string) {
                   v-model:web-mode="editWebMode" :processes="editProcs" :defaults="app.default_commands" />
               </NCollapseItem>
             </NCollapse>
+            <div class="project-file">
+              <div>
+                <div class="section-title">laranest.json</div>
+                <span class="muted small">
+                  <template v-if="app.project_file">This project's file sets the team's defaults: it is applied again whenever it
+                    changes (a <code>git pull</code>). Changes made here stay on this machine until then.</template>
+                  <template v-else>Share these settings with your team: save them to the project and commit the file.</template>
+                </span>
+              </div>
+              <NButton size="small" :disabled="dirty" :title="dirty ? 'Save your changes first' : ''" @click="saveProject">
+                {{ app.project_file ? 'Update laranest.json' : 'Save to laranest.json' }}
+              </NButton>
+            </div>
             <div class="row">
               <NButton type="primary" :disabled="!dirty" :loading="busy" @click="save">Save</NButton>
               <span v-if="restartNeeded && app.state !== 'stopped'" class="muted small">The app restarts when saved.</span>
@@ -347,6 +389,8 @@ function showLogs(process: string) {
 .link { color: var(--brand); text-decoration: none; }
 .actions { margin-bottom: 8px; flex-wrap: wrap; }
 .shared { margin-bottom: 10px; }
+.project-file { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+@media (max-width: 560px) { .project-file { flex-direction: column; align-items: flex-start; } }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; word-break: break-all; }

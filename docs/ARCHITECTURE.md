@@ -148,6 +148,38 @@ project's version decode and render each dump (HTML and text). It posts them to
 the daemon, which keeps the last 200 per app in memory for the panel (each
 shown in a sandboxed frame) and the MCP server (`get_dumps`, as text).
 
+## laranest.json
+
+A project's committed settings (`detect.ProjectConfig`): PHP, HTTPS,
+processes (only the ones listed; the rest keep Laranest's recommendation),
+command overrides, custom processes and the web mode. Unknown fields are
+errors, so a typo is reported instead of ignored. The app stores the SHA-256
+of the file it last applied: on add, start and re-detect a different file is
+applied again (validated first; a broken one is a warning and leaves the
+settings alone). Saving from the panel writes the app's current settings and
+records their hash. On Windows, saving keeps a `horizon: true` from the file,
+as Windows runs `queue:work` instead.
+
+## Xdebug
+
+Turned on per app, it is loaded only into that app's web process, as `-d
+zend_extension=…` plus `xdebug.mode=debug`, `start_with_request=trigger`,
+`client_host=localhost` and `client_port=9003`, so a request only debugs when the
+browser sends the trigger. Where it comes from:
+
+- **Laranest's Linux builds:** the PHP workflow builds `xdebug.so` (Xdebug's
+  latest stable from PECL) with each PHP and publishes it as
+  `xdebug-<version>-linux-<arch>.so`, listed as `xdebug_url`/`xdebug_sha256`
+  next to that PHP in the manifest (older Laranest versions ignore those).
+  It is downloaded into the version's folder the first time an app turns
+  Xdebug on.
+- **Windows:** `php_xdebug.dll` from PECL, like phpredis.
+- **System PHP:** the distribution's package, if installed.
+- **static-php's generic builds** (macOS for now) can't load extensions.
+
+Turning it on downloads it and checks that PHP loads it before the app
+restarts.
+
 ## Sharing
 
 *Share* runs `cloudflared tunnel --url http://127.0.0.1:<HTTP port>` as the

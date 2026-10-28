@@ -58,6 +58,7 @@ type updateInput struct {
 	Custom    []customProcess   `json:"custom,omitempty" jsonschema:"advanced: the app's custom processes; the list replaces the current one (send [] to remove them all)"`
 	WebMode   *string           `json:"web_mode,omitempty" jsonschema:"advanced: empty string = PHP-FPM/php-cgi (automatic); port = serve the app with commands.web (Octane, a custom server)"`
 	Dumps     *bool             `json:"dumps,omitempty" jsonschema:"capture dump() and dd() in Laranest instead of the page or terminal (read them with get_dumps)"`
+	Xdebug    *bool             `json:"xdebug,omitempty" jsonschema:"load Xdebug into the web process for step debugging (starts on a trigger; the IDE listens on port 9003)"`
 }
 
 type restartInput struct {
@@ -231,6 +232,9 @@ func register(s *mcp.Server, c *client) {
 			if in.Dumps != nil {
 				body["dumps"] = *in.Dumps
 			}
+			if in.Xdebug != nil {
+				body["xdebug"] = *in.Xdebug
+			}
 			if len(body) == 0 {
 				return errorResult("nothing to change: pass at least one setting")
 			}
@@ -353,6 +357,12 @@ func register(s *mcp.Server, c *client) {
 				return textResult("No output yet.")
 			}
 			return textResult(joinLines(lines))
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "save_laranest_json", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: true},
+		Description: "Writes the app's settings (PHP version, HTTPS, processes, custom commands and processes, web mode) to laranest.json in the project, so the team can commit it and everyone runs the project the same way. Laranest applies that file when an app is added and whenever it changes."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in appID) (*mcp.CallToolResult, any, error) {
+			return result(c.do(ctx, http.MethodPost, "/apps/"+url.PathEscape(in.ID)+"/project", nil))
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_laravel_log", Annotations: read,
