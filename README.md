@@ -80,7 +80,7 @@ system-wide.
 | | |
 |---|---|
 | **Trust the HTTPS certificates** | Click *Trust on Windows…* in the panel (Windows and WSL; Windows asks you to confirm) or run `laranest trust` (Ubuntu: asks for your sudo password once; also covers Chrome and Firefox. macOS: adds it to the System Keychain, used by Safari and Chrome, asking for your password). |
-| **Clean URLs (ports 80/443)** | Linux: `laranest setup-ports` (asks for your sudo password once). Windows and macOS need nothing: Laranest uses 80/443 when they are free. Otherwise it picks free ports such as 8080/8443. |
+| **Clean URLs (ports 80/443)** | Linux: `laranest setup-ports` (asks for your sudo password once). Windows needs nothing: Laranest uses 80/443 when they are free. macOS only lets root use them on 127.0.0.1, so it uses 8080/8443 for now. Otherwise it picks free ports such as 8080/8443. |
 | **WSL: keep it running** | WSL stops a distro shortly after its last terminal closes. The panel offers to set `instanceIdleTimeout=-1` in your `.wslconfig` and, optionally, to start Laranest when you sign in to Windows. |
 
 ## Using it

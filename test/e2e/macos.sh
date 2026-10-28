@@ -32,13 +32,16 @@ waitfor() { local t=$1; shift; for _ in $(seq "$t"); do "$@" >/dev/null 2>&1 && 
 appstate() { j "$API/apps/mac" | jq -r .app.state; }
 pstate() { j "$API/apps/mac" | jq -r --arg p "$1" '.app.procs[] | select(.name==$p) | .state'; }
 body() { curl -s --cacert "$STATE/caddy/pki/authorities/local/root.crt" "$@"; }
-served() { body https://mac.localhost/ | grep -q -- "$1"; }
+served() { body "https://mac.localhost$SFX/" | grep -q -- "$1"; }
 sleepers() { pgrep -f "sleep 400[01]"; }
 
 dump() {
   echo "--- daemon log"; tail -n 80 "$STATE/laranest.log" 2>/dev/null
-  echo "--- app"; j "$API/apps/mac" | jq . 2>/dev/null
+  echo "--- processes"; j "$API/apps/mac" | jq -c '.app.procs[]?' 2>/dev/null
   for p in web worker; do echo "--- $p logs"; curl -s -m 2 "$API/apps/mac/logs/$p" | tail -n 20; done
+  echo "--- ps"; ps -axo pid,ppid,pgid,stat,command | grep -E "php|sleep|laranest" | grep -v grep
+  echo "--- state files"; find "$STATE" -maxdepth 3 \( -name "*.sock" -o -name "*.conf" -o -name "*.json" \) -print 2>/dev/null
+  for f in "$STATE"/apps/mac/fpm.conf; do [ -f "$f" ] && { echo "--- $f"; cat "$f"; }; done
 }
 
 # ---------------------------------------------------------------------------
@@ -47,7 +50,11 @@ section "Install (launchd agent)"
 check "LaunchAgent written" test -f "$HOME/Library/LaunchAgents/dev.laranest.plist"
 check "launchd runs it" launchctl print "gui/$(id -u)/dev.laranest"
 has "laranest status" "$("$LN" status 2>&1)" "active"
-eq "listens on 80/443 without root" "$(j "$API/system" | jq -r '"\(.http_port)/\(.https_port)"')" "80/443"
+PORTS=$(j "$API/system" | jq -r '"\(.http_port) \(.https_port)"')
+read -r HTTP HTTPS <<<"$PORTS"
+echo "  (proxy on $HTTP/$HTTPS)"
+SFX=""; [ "$HTTPS" = 443 ] || SFX=":$HTTPS"
+HSFX=""; [ "$HTTP" = 80 ] || HSFX=":$HTTP"
 
 # ---------------------------------------------------------------------------
 section "An app with PHP downloaded for macOS"
@@ -60,8 +67,8 @@ add=$(j -X POST "$API/apps" -d "{\"path\":\"$APP\",\"id\":\"mac\",\"php\":\"8.4\
   \"processes\":{\"queue\":false,\"horizon\":false,\"scheduler\":false,\"reverb\":false,\"vite\":false}}")
 has "app added" "$add" '"id":"mac"'
 waitfor 240 served "ok 8.4." && ok "served over HTTPS by PHP-FPM" || { bad "served over HTTPS by PHP-FPM"; dump; }
-has "PHP is the macOS build, through FPM" "$(body https://mac.localhost/)" "Darwin fpm-fcgi"
-eq "http redirects to https" "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://mac.localhost/x)" "308 https://mac.localhost/x"
+has "PHP is the macOS build, through FPM" "$(body "https://mac.localhost$SFX/")" "Darwin fpm-fcgi"
+eq "http redirects to https" "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://mac.localhost$HSFX/x")" "308 https://mac.localhost$SFX/x"
 has "laranest php works in the project" "$(cd "$APP" && "$LN" php -r 'echo PHP_OS_FAMILY;' 2>&1)" "Darwin"
 # The System Keychain needs a password prompt: on a CI runner only check it doesn't hang.
 perl -e 'alarm shift; exec @ARGV' 60 "$LN" trust < /dev/null > "$ROOT/trust.log" 2>&1; echo "  (laranest trust exited $?)"
@@ -70,7 +77,7 @@ perl -e 'alarm shift; exec @ARGV' 60 "$LN" trust < /dev/null > "$ROOT/trust.log"
 section "Custom process (its whole process group is supervised)"
 j -X PATCH "$API/apps/mac" -d '{"custom":[{"name":"worker","command":"bash -c \"sleep 4000 & sleep 4001\""}]}' > /dev/null
 waitfor 30 test "$(pstate worker)" = running && ok "custom process running" || { bad "custom process running"; dump; }
-waitfor 10 test "$(sleepers | wc -l | tr -d ' ')" = 2 && ok "with its child" || bad "with its child"
+waitfor 10 test "$(sleepers | wc -l | tr -d ' ')" = 2 && ok "with its child" || { bad "with its child"; dump; }
 web_pid=$(j "$API/apps/mac" | jq -r '.app.procs[] | select(.name=="web") | .pid')
 
 section "Stop leaves no processes behind"

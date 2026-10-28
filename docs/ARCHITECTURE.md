@@ -134,7 +134,7 @@ rest of the Linux pieces:
 | PHP-FPM, logs to journald | The same PHP-FPM pool on a unix socket, logging to stderr, which the supervisor reads. |
 | Static PHP builds | static-php-cli's macOS builds (`common` extension set), until the `php` release has macOS builds of its own (`manifest-macos.json`). |
 | `laranest trust`: system store + NSS | The System Keychain (Safari, Chrome; macOS asks for your password), plus Firefox's profiles when `certutil` is installed (`brew install nss`). |
-| `laranest setup-ports` | Not needed: macOS lets any user listen on 80/443. |
+| `laranest setup-ports` | Not available yet: macOS lets users bind 80/443 only on every interface, which would expose the apps to the network, so the proxy stays on 127.0.0.1:8080/8443. |
 
 ## Ports
 
