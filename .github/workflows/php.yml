@@ -13,6 +13,13 @@
 # published one are rebuilt and merged into the existing manifest. Changing
 # php/extensions.txt (its hash is stored in the manifest), or running it by
 # hand with "force", rebuilds everything.
+#
+# Each build also produces xdebug.so (a shared extension, loaded only by the
+# apps that turn Xdebug on), published as xdebug-<version>-linux-<arch>.so and
+# listed next to its PHP in the manifest.
+#
+# To try a change without publishing: run it by hand on the branch with
+# "only" (e.g. 8.4/x86_64) and "dry_run"; the builds stay as artifacts.
 name: PHP builds
 
 on:
@@ -20,6 +27,14 @@ on:
     inputs:
       force:
         description: Rebuild every version even if it is up to date
+        type: boolean
+        default: false
+      only:
+        description: Build only these, e.g. "8.4/x86_64 8.3/aarch64" (implies force for them)
+        type: string
+        default: ""
+      dry_run:
+        description: Build without publishing anything
         type: boolean
         default: false
   push:
@@ -53,6 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force == true }}
+          ONLY: ${{ inputs.only }}
         run: |
           gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p manifest.json -O current.json 2>/dev/null ||
             echo '{"php":[]}' > current.json
@@ -67,7 +83,10 @@ jobs:
             for arch in x86_64 aarch64; do
               published=$(jq -r --arg m "$minor." --arg a "$arch" \
                 '[.php[] | select(.arch == $a and (.version | startswith($m)))][0].version // ""' current.json)
-              if [ "$FORCE" = "true" ] || [ "$published" != "$latest" ]; then
+              if [ -n "$ONLY" ]; then
+                grep -qw -- "$minor/$arch" <<<"$ONLY" || continue
+              fi
+              if [ "$FORCE" = "true" ] || [ -n "$ONLY" ] || [ "$published" != "$latest" ]; then
                 runner=ubuntu-24.04; [ "$arch" = aarch64 ] && runner=ubuntu-24.04-arm
                 echo "build $minor/$arch: ${published:-none} -> $latest"
                 include=$(jq -c --arg p "$minor" --arg a "$arch" --arg r "$runner" '. + [{php: $p, arch: $a, runner: $r}]' <<<"$include")
@@ -81,6 +100,7 @@ jobs:
 
   # The Visual C++ 2015-2022 runtime from an up to date Windows runner.
   vcruntime:
+    if: inputs.dry_run != true
     runs-on: windows-2025
     env:
       GH_TOKEN: ${{ github.token }}
@@ -136,13 +156,13 @@ jobs:
         run: |
           ./bin/spc-gnu-docker download \
             --with-php=${{ matrix.php }} \
-            --for-extensions="$(cat ../php/extensions.txt)" \
+            --for-extensions="$(cat ../php/extensions.txt),xdebug" \
             --prefer-pre-built \
             --ignore-cache-sources=php-src
 
       - name: Build
         working-directory: spc
-        run: ./bin/spc-gnu-docker build "$(cat ../php/extensions.txt)" --build-cli --build-fpm
+        run: ./bin/spc-gnu-docker build "$(cat ../php/extensions.txt)" --build-shared=xdebug --build-cli --build-fpm
 
       - name: Smoke test
         run: |
@@ -152,6 +172,10 @@ jobs:
           for ext in intl opcache pdo_sqlite pdo_pgsql pdo_mysql redis sodium mbstring; do
             $bin/php -m | grep -qix -e "$ext" -e "zend $ext" || { echo "missing $ext"; exit 1; }
           done
+          xdebug=$(find spc/buildroot -name xdebug.so | head -1)
+          [ -n "$xdebug" ] || { echo "xdebug.so was not built"; exit 1; }
+          $bin/php -d zend_extension="$PWD/$xdebug" -v | grep -i "with Xdebug"
+          $bin/php-fpm -d zend_extension="$PWD/$xdebug" -m | grep -ix xdebug
 
       - name: Package
         id: pkg
@@ -160,9 +184,13 @@ jobs:
           name="php-${version}-linux-${{ matrix.arch }}.tar.gz"
           sudo chown -R "$(id -u)" spc/buildroot
           tar -czf "$name" -C spc/buildroot/bin php php-fpm
+          xdebug="xdebug-${version}-linux-${{ matrix.arch }}.so"
+          cp "$(find spc/buildroot -name xdebug.so | head -1)" "$xdebug"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          printf '{"version":"%s","arch":"%s","file":"%s","sha256":"%s"}\n' \
-            "$version" "${{ matrix.arch }}" "$name" "$(sha256sum "$name" | cut -d' ' -f1)" > "$name.json"
+          echo "xdebug=$xdebug" >> "$GITHUB_OUTPUT"
+          printf '{"version":"%s","arch":"%s","file":"%s","sha256":"%s","xdebug":"%s","xdebug_sha256":"%s"}\n' \
+            "$version" "${{ matrix.arch }}" "$name" "$(sha256sum "$name" | cut -d' ' -f1)" \
+            "$xdebug" "$(sha256sum "$xdebug" | cut -d' ' -f1)" > "$name.json"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -170,6 +198,7 @@ jobs:
           path: |
             ${{ steps.pkg.outputs.name }}
             ${{ steps.pkg.outputs.name }}.json
+            ${{ steps.pkg.outputs.xdebug }}
 
       - name: Upload build logs on failure
         if: failure()
@@ -181,7 +210,7 @@ jobs:
   publish:
     needs: [plan, build]
     # Publish whatever built: one broken version shouldn't block the others.
-    if: always() && !cancelled() && needs.plan.outputs.any == 'true'
+    if: always() && !cancelled() && needs.plan.outputs.any == 'true' && inputs.dry_run != true
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -207,7 +236,8 @@ jobs:
             --arg ext "$(sha256sum php/extensions.txt | cut -d' ' -f1)" \
             --slurpfile cur current.json --slurpfile new <(cat dist/*.json | jq -s .) '
             def minor: .version | split(".")[0:2] | join(".");
-            ($new[0] | map({version, arch, sha256, url: ($base + "/" + .file)})) as $n |
+            ($new[0] | map({version, arch, sha256, url: ($base + "/" + .file)}
+              + (if .xdebug then {xdebug_url: ($base + "/" + .xdebug), xdebug_sha256} else {} end))) as $n |
             {
               built: $built,
               extensions_sha: $ext,
@@ -222,9 +252,9 @@ jobs:
             gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
               --title "PHP builds" \
               --notes "Static PHP (cli + fpm) for Laranest, built with static-php-cli. Extensions: see php/extensions.txt."
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber dist/*.tar.gz dist/manifest.json
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber dist/*.tar.gz dist/*.so dist/manifest.json
           # Drop assets no longer referenced by the manifest (older patch versions).
-          keep=$(jq -r '.php[].url | split("/") | last' dist/manifest.json; printf '%s\n' manifest.json vcruntime-x64.zip vcruntime-x64.zip.sha256)
+          keep=$(jq -r '.php[] | (.url, .xdebug_url // empty) | split("/") | last' dist/manifest.json; printf '%s\n' manifest.json vcruntime-x64.zip vcruntime-x64.zip.sha256)
           for asset in $(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name'); do
             grep -qxF "$asset" <<<"$keep" || gh release delete-asset "$RELEASE_TAG" "$asset" -R "$GITHUB_REPOSITORY" -y
           done

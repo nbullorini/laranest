@@ -389,11 +389,19 @@ type UpdateRequest struct {
 	Custom   *[]CustomProcess   `json:"custom"`
 	WebMode  *string            `json:"web_mode"`
 	Dumps    *bool              `json:"dumps"`
+	Xdebug   *bool              `json:"xdebug"`
 }
 
 // Update changes settings; a running app is restarted when a setting that
 // affects its processes changes (not for cosmetic ones like the group).
 func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
+	if req.Xdebug != nil && *req.Xdebug {
+		// Download and try it now (outside the lock): an app shouldn't
+		// restart into a web process that can't load it.
+		if err := m.checkXdebug(id, req.PHP); err != nil {
+			return View{}, err
+		}
+	}
 	m.mu.Lock()
 	a := m.store.apps[id]
 	if a == nil {
@@ -448,7 +456,7 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 		a.HTTPS = *req.HTTPS
 	}
 	if req.ID == nil && req.PHP == nil && req.Processes == nil && req.Commands == nil && req.Custom == nil && req.WebMode == nil &&
-		(req.Dumps == nil || *req.Dumps == a.Dumps) {
+		(req.Dumps == nil || *req.Dumps == a.Dumps) && (req.Xdebug == nil || *req.Xdebug == a.Xdebug) {
 		err := m.store.save()
 		if req.HTTPS != nil {
 			m.applyProxyLocked()
@@ -498,6 +506,9 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 		if !a.Dumps {
 			a.DumpPort = 0
 		}
+	}
+	if req.Xdebug != nil {
+		a.Xdebug = *req.Xdebug
 	}
 	err := m.store.save()
 	m.applyProxyLocked()
@@ -839,6 +850,10 @@ type prepared struct {
 	rt       php.Runtime
 	nodeBin  string // dir with node/npm, when Vite or a custom command uses them
 	composer string // composer.phar, when a custom command uses it
+	// xdebug are the PHP options that load Xdebug into the web process;
+	// xdebugErr says why it couldn't (the app starts without it).
+	xdebug    []string
+	xdebugErr error
 }
 
 func (m *Manager) prepare(a *App) (prepared, error) {
@@ -849,6 +864,11 @@ func (m *Manager) prepare(a *App) (prepared, error) {
 		return prepared{}, err
 	}
 	p := prepared{rt: rt}
+	if a.Xdebug && a.WebMode != WebModePort {
+		if p.xdebug, err = m.rt.Installer.XdebugArgs(ctx, rt); err != nil {
+			p.xdebugErr = fmt.Errorf("xdebug: %w", err)
+		}
+	}
 	if a.Processes.Vite || usesTool(a, "npm", "npx", "node") {
 		if p.nodeBin, err = m.rt.Tools.NodeBinDir(ctx); err != nil {
 			return p, err
@@ -1003,6 +1023,7 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 		}
 		web = rt.FPMCommand(conf)
 	}
+	web = append(web, prep.xdebug...) // empty in port mode: the command is the user's
 	// Transient units get systemd's environment, not ours: pass PATH so the
 	// project's scripts find npm/node (nvm), composer, etc.
 	// Processes that shell out to `php` (Vite plugins, artisan subcommands)
@@ -1089,7 +1110,7 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 	// Overrides replace the automatic command of a built-in process. A
 	// command that can't run (a program that isn't installed) only keeps its
 	// own process down: the rest of the app starts, and the error is reported.
-	errs := []error{dumpsErr}
+	errs := []error{dumpsErr, prep.xdebugErr}
 	resolved := specs[:0]
 	for _, s := range specs {
 		if line, ok := a.Commands[s.Name]; ok && s.Name != "web" {
@@ -1550,3 +1571,27 @@ func (m *Manager) TrustWindows() (trust.Status, error) {
 }
 
 func (m *Manager) RootCert() string { return m.proxy.RootCert() }
+
+// checkXdebug makes sure Xdebug can be loaded into the PHP the app would use
+// (php, when it changes in the same update), downloading it if needed.
+func (m *Manager) checkXdebug(id string, newPHP *string) error {
+	m.mu.Lock()
+	a := m.store.apps[id]
+	if a == nil {
+		m.mu.Unlock()
+		return ErrNotFound
+	}
+	pin, req := a.PHP, requirement(a)
+	m.mu.Unlock()
+	if newPHP != nil {
+		pin = *newPHP
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	rt, err := m.rt.Resolve(ctx, pin, req)
+	if err != nil {
+		return err
+	}
+	_, err = m.rt.Installer.XdebugArgs(ctx, rt)
+	return err
+}
