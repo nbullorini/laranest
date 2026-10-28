@@ -3,6 +3,7 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,5 +42,38 @@ func TestVitePort(t *testing.T) {
 })`), 0o644)
 	if port, strict := VitePort(root); port != 5199 || !strict {
 		t.Errorf("pinned port: got %d %v", port, strict)
+	}
+}
+
+// A project once served by Apache: storage/ is yours, but logs/ isn't.
+func TestCheckWritableSubfolders(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix permissions and a non-root user")
+	}
+	root := t.TempDir()
+	for _, d := range []string{"storage/logs", "storage/framework/views", "bootstrap/cache"} {
+		os.MkdirAll(filepath.Join(root, d), 0o755)
+	}
+	if ws := checkWritable(root); ws != nil {
+		t.Fatalf("all writable: got %+v", ws)
+	}
+	logs := filepath.Join(root, "storage", "logs")
+	os.Chmod(logs, 0o555)
+	defer os.Chmod(logs, 0o755)
+	ws := checkWritable(root)
+	if len(ws) != 1 || !strings.Contains(ws[0].Message, "storage/logs") || strings.Contains(ws[0].Message, "bootstrap/cache") {
+		t.Errorf("read-only storage/logs: got %+v", ws)
+	}
+}
+
+func TestCheckWindowsDisk(t *testing.T) {
+	if ws := checkWindowsDisk("/mnt/d/projects/app", true); len(ws) != 1 || ws[0].Code != "wsl_windows_disk" {
+		t.Errorf("WSL on /mnt/d: got %+v", ws)
+	}
+	if ws := checkWindowsDisk("/home/me/app", true); ws != nil {
+		t.Errorf("WSL in Linux: got %+v", ws)
+	}
+	if ws := checkWindowsDisk("/mnt/d/projects/app", false); ws != nil {
+		t.Errorf("not WSL: got %+v", ws)
 	}
 }
