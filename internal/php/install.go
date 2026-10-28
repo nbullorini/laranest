@@ -154,7 +154,7 @@ func (in *Installer) stage(ctx context.Context, rel Release, ini string) (string
 	}
 
 	if runtime.GOOS == "windows" {
-		err = stageWindows(ctx, rel, tmp)
+		err = stageWindows(ctx, rel, tmp, in.Catalog.ManifestURL)
 	} else if rel.URL != "" {
 		err = downloadAndExtract(ctx, rel.URL, rel.SHA256, rel.Headers, tmp)
 	} else {

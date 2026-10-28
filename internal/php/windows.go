@@ -10,10 +10,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/nbullorini/laranest/internal/ghrelease"
 )
 
 // On Windows Laranest uses the official builds from windows.php.net
@@ -86,14 +89,66 @@ func parseWindowsPHP(url string, body []byte) ([]Release, error) {
 	return out, nil
 }
 
-// stageWindows extracts a windows.php.net zip into dir and adds phpredis.
-func stageWindows(ctx context.Context, rel Release, dir string) error {
+// stageWindows extracts a windows.php.net zip into dir and adds phpredis
+// and the Visual C++ runtime.
+func stageWindows(ctx context.Context, rel Release, dir, manifestURL string) error {
 	if err := downloadZip(ctx, rel.URL, rel.SHA256, rel.Headers, dir); err != nil {
 		return err
 	}
 	// phpredis is optional: Laravel defaults to it, but predis works without.
 	_ = installPECL(ctx, "redis", rel.Minor, rel.URL, filepath.Join(dir, "ext"))
+	if err := installVCRuntime(ctx, vcruntimeURL(manifestURL), dir); err != nil && !systemHasVCRuntime() {
+		return fmt.Errorf("PHP for Windows needs the Microsoft Visual C++ Redistributable, and downloading it failed (%w): "+
+			"install it from https://aka.ms/vs/17/release/vc_redist.x64.exe and try again", err)
+	}
 	return nil
+}
+
+// vcruntimeURL is the Visual C++ runtime zip next to Laranest's PHP manifest
+// (see .github/workflows/php.yml).
+func vcruntimeURL(manifestURL string) string {
+	if manifestURL == "" {
+		manifestURL = DefaultManifestURL
+	}
+	return manifestURL[:strings.LastIndex(manifestURL, "/")+1] + "vcruntime-x64.zip"
+}
+
+// installVCRuntime puts the Visual C++ runtime DLLs next to php.exe: the
+// official builds need them and a fresh Windows may not have them. Windows
+// loads DLLs from the program's folder first, so it doesn't depend on (or
+// touch) what the system has installed.
+func installVCRuntime(ctx context.Context, url, dir string) error {
+	sums, rel, err := ghrelease.Get(ctx, url+".sha256")
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(string(sums))
+	if len(fields) == 0 {
+		return fmt.Errorf("empty checksum file")
+	}
+	tmp, err := os.MkdirTemp(dir, ".vcruntime-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if err := downloadZip(ctx, rel.URL(url[:strings.LastIndex(url, "/")+1], path.Base(url)), fields[0], rel.Headers, tmp); err != nil {
+		return err
+	}
+	dlls, _ := filepath.Glob(filepath.Join(tmp, "*.dll"))
+	if len(dlls) == 0 {
+		return fmt.Errorf("no DLLs in %s", url)
+	}
+	for _, dll := range dlls {
+		if err := os.Rename(dll, filepath.Join(dir, filepath.Base(dll))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func systemHasVCRuntime() bool {
+	_, err := os.Stat(filepath.Join(os.Getenv("SystemRoot"), "System32", "vcruntime140.dll"))
+	return err == nil
 }
 
 var compilerTag = regexp.MustCompile(`-(v[cs]\d+)-x64\.zip$`)

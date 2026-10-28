@@ -4,6 +4,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -75,5 +78,52 @@ func TestWindowsINIEnablesShippedExtensions(t *testing.T) {
 	}
 	if strings.Contains(ini, "extension=ldap") {
 		t.Error("enabled an extension the build does not ship")
+	}
+}
+
+func TestInstallVCRuntime(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, name := range []string{"vcruntime140.dll", "msvcp140.dll", "readme.txt"} {
+		w, _ := zw.Create(name)
+		w.Write([]byte(name))
+	}
+	zw.Close()
+	sum := sha256.Sum256(buf.Bytes())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/php/vcruntime-x64.zip":
+			w.Write(buf.Bytes())
+		case "/php/vcruntime-x64.zip.sha256":
+			fmt.Fprintf(w, "%s  vcruntime-x64.zip\n", hex.EncodeToString(sum[:]))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	if got := vcruntimeURL(srv.URL + "/php/manifest.json"); got != srv.URL+"/php/vcruntime-x64.zip" {
+		t.Fatalf("vcruntimeURL = %s", got)
+	}
+	dir := t.TempDir()
+	if err := installVCRuntime(context.Background(), srv.URL+"/php/vcruntime-x64.zip", dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, dll := range []string{"vcruntime140.dll", "msvcp140.dll"} {
+		if _, err := os.Stat(filepath.Join(dir, dll)); err != nil {
+			t.Errorf("%s was not put next to php.exe", dll)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "readme.txt")); err == nil {
+		t.Error("copied a file that is not a DLL")
+	}
+	if entries, _ := filepath.Glob(filepath.Join(dir, ".vcruntime-*")); len(entries) != 0 {
+		t.Error("left its temporary folder behind")
+	}
+
+	// A tampered download is rejected.
+	buf.WriteString("tampered")
+	if err := installVCRuntime(context.Background(), srv.URL+"/php/vcruntime-x64.zip", t.TempDir()); err == nil {
+		t.Error("accepted a download that doesn't match its checksum")
 	}
 }

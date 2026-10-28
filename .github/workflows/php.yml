@@ -4,6 +4,11 @@
 # glibc builds (spc-gnu-docker, CentOS 7 / glibc 2.17): they run on any modern
 # distro and, unlike musl ones, can load extra extensions with dl()/php.ini.
 #
+# Windows uses the official windows.php.net builds instead; the only thing
+# published here for it is vcruntime-x64.zip: the Visual C++ runtime DLLs
+# those builds need, which a fresh Windows may lack. Laranest puts them next
+# to php.exe (app-local, as Microsoft allows for its redistributable files).
+#
 # Incremental: only the minors whose latest patch on php.net differs from the
 # published one are rebuilt and merged into the existing manifest. Changing
 # php/extensions.txt (its hash is stored in the manifest), or running it by
@@ -73,6 +78,31 @@ jobs:
           done
           echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
           echo "any=$([ "$include" != "[]" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # The Visual C++ 2015-2022 runtime from an up to date Windows runner.
+  vcruntime:
+    runs-on: windows-2025
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Package the runtime DLLs
+        shell: pwsh
+        run: |
+          $dlls = 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'concrt140.dll'
+          New-Item -ItemType Directory vcruntime | Out-Null
+          foreach ($d in $dlls) { Copy-Item "$env:SystemRoot\System32\$d" vcruntime\ }
+          Get-ChildItem vcruntime | ForEach-Object { "$($_.Name) $($_.VersionInfo.FileVersion)" }
+          Compress-Archive vcruntime\* vcruntime-x64.zip
+          (Get-FileHash vcruntime-x64.zip -Algorithm SHA256).Hash.ToLower() + '  vcruntime-x64.zip' | Set-Content -NoNewline vcruntime-x64.zip.sha256
+
+      - name: Publish
+        shell: bash
+        run: |
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "PHP builds" \
+              --notes "Static PHP (cli + fpm) for Laranest, built with static-php-cli. Extensions: see php/extensions.txt."
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber vcruntime-x64.zip vcruntime-x64.zip.sha256
 
   build:
     needs: plan
@@ -194,7 +224,7 @@ jobs:
               --notes "Static PHP (cli + fpm) for Laranest, built with static-php-cli. Extensions: see php/extensions.txt."
           gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber dist/*.tar.gz dist/manifest.json
           # Drop assets no longer referenced by the manifest (older patch versions).
-          keep=$(jq -r '.php[].url | split("/") | last' dist/manifest.json; echo manifest.json)
+          keep=$(jq -r '.php[].url | split("/") | last' dist/manifest.json; printf '%s\n' manifest.json vcruntime-x64.zip vcruntime-x64.zip.sha256)
           for asset in $(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name'); do
             grep -qxF "$asset" <<<"$keep" || gh release delete-asset "$RELEASE_TAG" "$asset" -R "$GITHUB_REPOSITORY" -y
           done
