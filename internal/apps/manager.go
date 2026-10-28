@@ -48,6 +48,7 @@ type Manager struct {
 	cgiPorts map[string]int
 	cmds     *commandStore
 	dumps    dumpStore
+	shares   map[string]string // app id → public URL of its tunnel (share.go)
 
 	svcMu sync.Mutex
 	svc   map[string]svcEntry // app id → cached service checks
@@ -92,6 +93,7 @@ func NewManager(cfg config.Config) (*Manager, error) {
 		units:    um,
 		cgiPorts: map[string]int{},
 		cmds:     &commandStore{dir: filepath.Join(stateDir, "commands")},
+		shares:   map[string]string{},
 	}
 	m.proxy = proxy.New(m.proxyListen(), m.proxyListenTLS(), "laranest."+cfg.Domain, cfg.PanelAddr, m.PanelURL(), filepath.Join(stateDir, "caddy"))
 	return m, nil
@@ -120,6 +122,8 @@ func (m *Manager) Boot() {
 	apps := m.store.list()
 	m.mu.Unlock()
 	for _, a := range apps {
+		// A tunnel left by the previous daemon has an address nobody knows.
+		_ = m.units.Stop(context.Background(), unitName(a.ID, "share"))
 		if a.Autostart {
 			if err := m.Start(a.ID); err != nil {
 				slog.Warn("autostart failed", "app", a.ID, "err", err)
@@ -152,6 +156,8 @@ type View struct {
 	Warnings   []detect.Warning `json:"warnings"`
 	// DefaultCommands is what each built-in process runs unless overridden.
 	DefaultCommands map[string]string `json:"default_commands"`
+	// ShareURL is the app's public address while it is shared.
+	ShareURL string `json:"share_url,omitempty"`
 }
 
 func (m *Manager) List() []View {
@@ -181,7 +187,8 @@ func (m *Manager) Get(id string) (View, error) {
 
 func (m *Manager) view(a *App) View {
 	m.mu.Lock()
-	v := View{App: a, URL: m.appURL(a), State: "stopped", Procs: []units.Status{}, DefaultCommands: defaultCommands(a)}
+	v := View{App: a, URL: m.appURL(a), State: "stopped", Procs: []units.Status{}, DefaultCommands: defaultCommands(a),
+		ShareURL: m.shares[a.ID]}
 	if a.Processes.Reverb {
 		scheme := "ws://"
 		if a.HTTPS {
@@ -911,6 +918,7 @@ func (m *Manager) stopLocked(a *App) {
 		go func() { defer wg.Done(); _ = m.units.Stop(context.Background(), unitName(a.ID, name)) }()
 	}
 	wg.Wait()
+	m.stopShareLocked(a.ID)
 	delete(m.cgiPorts, a.ID)
 	if viteRan {
 		_ = os.Remove(filepath.Join(a.Path, "public", "hot"))
@@ -1133,6 +1141,7 @@ func (m *Manager) applyProxyLocked() error {
 		if a.Dumps && a.DumpPort != 0 {
 			s.Env = map[string]string{"VAR_DUMPER_FORMAT": "tcp://127.0.0.1:" + strconv.Itoa(a.DumpPort)}
 		}
+		s.ShareHost = m.shareHostLocked(a.ID)
 		if m.isRunning(a) && a.WebMode == WebModePort {
 			s.Upstream = "127.0.0.1:" + strconv.Itoa(a.WebPort)
 		} else if m.isRunning(a) {

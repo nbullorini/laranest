@@ -72,6 +72,9 @@ func validateAdvanced(commands map[string]string, custom []CustomProcess, webMod
 		if !customName.MatchString(c.Name) {
 			return fmt.Errorf("%q is not a valid process name (lowercase letters, digits and dashes)", c.Name)
 		}
+		if c.Name == "share" {
+			return fmt.Errorf("%q is reserved for sharing the app", c.Name)
+		}
 		if slices.Contains(processOrder, c.Name) {
 			return fmt.Errorf("%q is a built-in process: edit its command instead", c.Name)
 		}
@@ -200,9 +203,9 @@ func lookIn(path, name string) string {
 }
 
 // processNames is every process an app may have, enabled or not (to stop
-// them all, or to show the logs of one).
+// them all, or to show the logs of one), its tunnel included.
 func processNames(a *App) []string {
-	names := slices.Clone(processOrder)
+	names := append(slices.Clone(processOrder), "share")
 	for _, c := range a.Custom {
 		names = append(names, c.Name)
 	}
