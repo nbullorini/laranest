@@ -1,0 +1,42 @@
+# The macOS end-to-end test on Apple silicon, run by hand (Actions → macOS
+# arm64 → Run workflow) before a release or after macOS changes. It isn't part
+# of CI because GitHub often has no Apple silicon runner to give, which would
+# block pushes and releases for a capacity problem. CI tests macOS on Intel.
+name: macOS arm64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macos (arm64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        run: make ui
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build
+        run: make go
+
+      - name: End to end
+        run: test/e2e/macos.sh

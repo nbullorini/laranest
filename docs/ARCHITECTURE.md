@@ -188,8 +188,10 @@ The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
 ## Releases
 
 - Every push to main and pull request that touches code runs CI (Linux
-  x64/ARM64: unit tests + an end-to-end smoke test; macOS ARM64/Intel: unit
-  tests + an end-to-end test of the launchd install, `test/e2e/macos.sh`;
+  x64/ARM64: unit tests + an end-to-end smoke test; macOS Intel: unit
+  tests + an end-to-end test of the launchd install, `test/e2e/macos.sh`, which
+  runs on Apple silicon on demand, `macos-arm64.yml`, as those runners are
+  often unavailable;
   Windows: unit tests + build) and the full Windows regression (`windows-e2e.yml`, ~15 min).
 - `make publish RELEASE=vX.Y.Z` tags the current commit; the Release
   workflow waits for (or reads) that commit's CI and Windows regression on
