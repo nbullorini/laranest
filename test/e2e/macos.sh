@@ -33,7 +33,7 @@ appstate() { j "$API/apps/mac" | jq -r .app.state; }
 pstate() { j "$API/apps/mac" | jq -r --arg p "$1" '.app.procs[] | select(.name==$p) | .state'; }
 body() { curl -s --cacert "$STATE/caddy/pki/authorities/local/root.crt" "$@"; }
 served() { body "https://mac.localhost$SFX/" | grep -q -- "$1"; }
-sleepers() { pgrep -f "sleep 400[01]"; }
+sleepers() { pgrep -f "^sleep 400[01]"; }
 
 dump() {
   echo "--- daemon log"; tail -n 80 "$STATE/laranest.log" 2>/dev/null
@@ -83,7 +83,7 @@ web_pid=$(j "$API/apps/mac" | jq -r '.app.procs[] | select(.name=="web") | .pid'
 section "Stop leaves no processes behind"
 j -X POST "$API/apps/mac/stop" > /dev/null
 waitfor 20 test "$(appstate)" = stopped && ok "app stopped" || bad "app stopped"
-waitfor 15 bash -c '! pgrep -f "sleep 400[01]"' && ok "child of the custom process gone" || bad "child of the custom process gone" "$(sleepers)"
+waitfor 15 bash -c '! pgrep -f "^sleep 400[01]"' && ok "child of the custom process gone" || bad "child of the custom process gone" "$(sleepers)"
 check "PHP-FPM gone" bash -c "! kill -0 $web_pid"
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ section "Uninstall"
 "$LN" uninstall
 check "agent removed" test ! -f "$HOME/Library/LaunchAgents/dev.laranest.plist"
 check "daemon stopped" bash -c '! curl -sf -m 2 '"$API"'/health'
-waitfor 15 bash -c '! pgrep -f "sleep 400[01]"' && ok "apps stopped with it" || bad "apps stopped with it" "$(sleepers)"
+waitfor 15 bash -c '! pgrep -f "^sleep 400[01]"' && ok "apps stopped with it" || bad "apps stopped with it" "$(sleepers)"
 check "no PHP-FPM left" bash -c '! pgrep -f php-fpm'
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
