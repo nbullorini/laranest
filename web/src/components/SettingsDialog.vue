@@ -120,7 +120,7 @@ async function save() {
           <NButton v-if="!trust.windows" size="small" @click="doTrustWindows">Trust on Windows…</NButton>
         </div>
         <div v-if="system?.os !== 'windows'" class="row">
-          <span class="grow small">{{ wsl?.is_wsl ? 'Linux (inside WSL)' : 'This Ubuntu (system, Chrome, Firefox)' }}: {{ trust.system ? '✓ trusted' : '✗ not trusted' }}</span>
+          <span class="grow small">{{ wsl?.is_wsl ? 'Linux (inside WSL)' : system?.os === 'darwin' ? 'This Mac (Keychain: Safari, Chrome)' : 'This Linux (system, Chrome, Firefox)' }}: {{ trust.system ? '✓ trusted' : '✗ not trusted' }}</span>
           <code v-if="!trust.system" class="small">laranest trust{{ wsl?.is_wsl ? ' --linux' : '' }}</code>
         </div>
         <small class="muted">Local CA: {{ trust.subject }}. Laranest's apps (PHP, Node) already trust it.</small>

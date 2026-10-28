@@ -170,7 +170,7 @@ onBeforeUnmount(() => clearInterval(timer))
         <NButton size="small" @click="doTrustWindows">Trust on Windows…</NButton>
         <span class="muted small" style="margin-left: 8px">Windows will ask you to confirm (no administrator rights needed).</span>
       </div>
-      <div v-else style="margin-top: 8px">Run in a terminal: <code>laranest trust</code> (it asks for your sudo password once).</div>
+      <div v-else style="margin-top: 8px">Run in a terminal: <code>laranest trust</code> (it asks for your {{ system?.os === 'darwin' ? '' : 'sudo ' }}password once).</div>
     </NAlert>
     <NAlert v-if="wsl?.supported && !wsl.keep_alive" type="warning" title="WSL shuts down when no terminal is open">
       A few seconds after the last terminal closes, WSL shuts the distro down and Laranest and your apps stop responding.

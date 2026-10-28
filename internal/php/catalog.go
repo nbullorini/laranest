@@ -131,6 +131,11 @@ func (c *Catalog) fromManifest(ctx context.Context) ([]Release, error) {
 	if url == "" {
 		url = DefaultManifestURL
 	}
+	if runtime.GOOS == "darwin" {
+		// macOS builds have a manifest of their own: older Laranest versions
+		// read manifest.json and only tell builds apart by architecture.
+		url = strings.Replace(url, "manifest.json", "manifest-macos.json", 1)
+	}
 	// The repo may be private (pre-release): then it goes through the API with a token.
 	body, release, err := ghrelease.Get(ctx, url)
 	if err != nil {
@@ -166,7 +171,15 @@ func (c *Catalog) fromManifest(ctx context.Context) ([]Release, error) {
 	return out, nil
 }
 
-var staticPHPFile = regexp.MustCompile(`php-(\d+\.\d+\.\d+)-(cli|fpm)-linux-([a-z0-9_]+)\.tar\.gz`)
+var staticPHPFile = regexp.MustCompile(`php-(\d+\.\d+\.\d+)-(cli|fpm)-(linux|macos)-([a-z0-9_]+)\.tar\.gz`)
+
+// platform is static-php-cli's name for this OS.
+func platform() string {
+	if runtime.GOOS == "darwin" {
+		return "macos"
+	}
+	return "linux"
+}
 
 // fromStaticPHP scrapes static-php-cli's directory listing, keeping versions
 // that have both a cli and an fpm archive for our architecture.
@@ -184,7 +197,7 @@ func fromStaticPHP(ctx context.Context, base string) ([]Release, error) {
 func parseStaticPHP(base string, body []byte) ([]Release, error) {
 	sapis := map[string]map[string]bool{}
 	for _, m := range staticPHPFile.FindAllStringSubmatch(string(body), -1) {
-		if m[3] != arch() {
+		if m[3] != platform() || m[4] != arch() {
 			continue
 		}
 		if sapis[m[1]] == nil {
@@ -198,7 +211,7 @@ func parseStaticPHP(base string, body []byte) ([]Release, error) {
 			continue
 		}
 		file := func(sapi string) string {
-			return fmt.Sprintf("%sphp-%s-%s-linux-%s.tar.gz", base, v, sapi, arch())
+			return fmt.Sprintf("%sphp-%s-%s-%s-%s.tar.gz", base, v, sapi, platform(), arch())
 		}
 		out = append(out, Release{Version: v, Minor: minorOf(v), Source: "static-php", CLIURL: file("cli"), FPMURL: file("fpm")})
 	}

@@ -145,3 +145,41 @@ jobs:
         run: |
           go vet ./...
           go test ./...
+
+  # macOS (beta): unit tests, then the end-to-end test on a real Mac with the
+  # launchd agent, PHP for macOS and Laranest's own process supervisor.
+  macos:
+    name: macos (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-15 }
+          - { arch: x86_64, runner: macos-15-intel }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        run: make ui
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build
+        run: make go
+
+      - name: End to end
+        run: test/e2e/macos.sh

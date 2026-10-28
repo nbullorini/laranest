@@ -33,7 +33,7 @@ func trustCmd() *cobra.Command {
 			root := filepath.Join(state, "caddy", "pki", "authorities", "local", "root.crt")
 			env := wsl.Env{Distro: cfg.WSLDistro, Profile: cfg.WindowsProfile}
 
-			onWindows := runtime.GOOS == "windows"
+			onWindows, onMac := runtime.GOOS == "windows", runtime.GOOS == "darwin"
 			if !status {
 				if wsl.IsWSL() || onWindows {
 					fmt.Println("Adding Laranest's CA to your Windows user: accept the Windows dialog that pops up…")
@@ -43,13 +43,14 @@ func trustCmd() *cobra.Command {
 					fmt.Println("✓ Windows trusts Laranest (Chrome, Edge and Firefox on Windows; restart the browser if it was open).")
 				}
 				if !onWindows && (!wsl.IsWSL() || linux) {
-					fmt.Println("Adding Laranest's CA to Linux (sudo may ask for your password)…")
+					system := map[bool]string{true: "macOS (the Keychain asks for your password)", false: "Linux (sudo may ask for your password)"}[onMac]
+					fmt.Printf("Adding Laranest's CA to %s…\n", system)
 					if err := trust.InstallLinux(root); err != nil {
 						return err
 					}
-					fmt.Println("✓ Linux trusts Laranest.")
+					fmt.Println("✓ " + map[bool]string{true: "macOS (Safari, Chrome, curl)", false: "Linux"}[onMac] + " trusts Laranest.")
 					if !trust.Check(root, env).NSSTool {
-						fmt.Printf("! Firefox and Chrome on Linux need certutil: %s && laranest trust\n", trust.NSSToolInstall())
+						fmt.Printf("! Firefox needs certutil to trust it too: %s && laranest trust\n", trust.NSSToolInstall())
 					}
 				}
 			}
@@ -62,7 +63,9 @@ func trustCmd() *cobra.Command {
 			if st.Windows != nil {
 				fmt.Printf("  Windows (Windows browsers): %s\n", yesNo(*st.Windows))
 			}
-			if !onWindows {
+			if onMac {
+				fmt.Printf("  macOS (Keychain):            %s\n", yesNo(st.System))
+			} else if !onWindows {
 				fmt.Printf("  Linux (system, curl):        %s\n", yesNo(st.System))
 			}
 			return nil

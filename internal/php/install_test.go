@@ -44,7 +44,7 @@ func TestInstallFromManifest(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/manifest.json":
+		case "/manifest.json", "/manifest-macos.json": // macOS reads its own
 			fmt.Fprintf(w, `{"php":[
 				{"version":"8.3.9","arch":%q,"url":"%s/a.tgz","sha256":%q},
 				{"version":"8.3.10","arch":%q,"url":"%s/a.tgz","sha256":%q},
@@ -80,7 +80,7 @@ func TestInstallRejectsBadChecksum(t *testing.T) {
 	archive := fakeArchive(t)
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/manifest.json" {
+		if strings.HasPrefix(r.URL.Path, "/manifest") { // manifest-macos.json on macOS
 			fmt.Fprintf(w, `{"php":[{"version":"8.4.1","arch":%q,"url":"%s/a.tgz","sha256":"deadbeef"}]}`, arch(), srv.URL)
 			return
 		}
@@ -100,9 +100,9 @@ func TestInstallRejectsBadChecksum(t *testing.T) {
 
 func TestStaticPHPListing(t *testing.T) {
 	a := arch()
-	html := fmt.Sprintf(`<a href="php-8.3.1-cli-linux-%[1]s.tar.gz">x</a> <a href="php-8.3.1-fpm-linux-%[1]s.tar.gz">x</a>
-		<a href="php-8.3.2-cli-linux-%[1]s.tar.gz">x</a>
-		<a href="php-8.4.0-cli-linux-%[1]s.tar.gz">x</a> <a href="php-8.4.0-fpm-linux-%[1]s.tar.gz">x</a>`, a)
+	html := fmt.Sprintf(`<a href="php-8.3.1-cli-%[2]s-%[1]s.tar.gz">x</a> <a href="php-8.3.1-fpm-%[2]s-%[1]s.tar.gz">x</a>
+		<a href="php-8.3.2-cli-%[2]s-%[1]s.tar.gz">x</a>
+		<a href="php-8.4.0-cli-%[2]s-%[1]s.tar.gz">x</a> <a href="php-8.4.0-fpm-%[2]s-%[1]s.tar.gz">x</a>`, a, platform())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, html) }))
 	defer srv.Close()
 
@@ -123,7 +123,7 @@ func TestUpdateKeepsINIAndReplacesBuild(t *testing.T) {
 	version := "8.3.9"
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/manifest.json" {
+		if strings.HasPrefix(r.URL.Path, "/manifest") { // manifest-macos.json on macOS
 			fmt.Fprintf(w, `{"php":[{"version":%q,"arch":%q,"url":"%s/a.tgz","sha256":%q}]}`,
 				version, arch(), srv.URL, hex.EncodeToString(sum[:]))
 			return

@@ -129,7 +129,7 @@ export interface PHPInfo {
 export interface System {
   version: string
   executable: string
-  os: 'linux' | 'windows'
+  os: 'linux' | 'windows' | 'darwin'
   data_dir: string
   panel_url: string
   domain: string

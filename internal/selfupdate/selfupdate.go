@@ -39,7 +39,7 @@ func Asset() string {
 	if runtime.GOOS == "windows" {
 		return "laranest-windows-amd64.exe"
 	}
-	return "laranest-linux-" + runtime.GOARCH
+	return "laranest-" + runtime.GOOS + "-" + runtime.GOARCH // linux/darwin, amd64/arm64
 }
 
 // Status says whether a newer build is published.

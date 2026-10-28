@@ -1,0 +1,32 @@
+# GitHub sometimes has no macOS runner to give (mostly Apple silicon): the
+# job is cancelled with "The job was not acquired by Runner…" and never ran.
+# Run those jobs again on their own, up to three attempts, so a PR doesn't
+# need a manual "Re-run" for a capacity problem.
+name: Retry jobs without a runner
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion != 'success' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Re-run jobs that never got a runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          # Only jobs cancelled before any step ran: a real failure (or a run
+          # someone cancelled after it started) is left alone.
+          starved=$(gh api "repos/$GH_REPO/actions/runs/$RUN/jobs?filter=latest" \
+            -q '[.jobs[] | select(.conclusion == "cancelled" and (.steps | length) == 0)] | length')
+          echo "jobs that never got a runner: $starved"
+          [ "$starved" -gt 0 ] || exit 0
+          gh run rerun "$RUN" --failed
