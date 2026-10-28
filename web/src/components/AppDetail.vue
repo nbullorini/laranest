@@ -9,6 +9,7 @@ import StateTag from './StateTag.vue'
 import WarningList from './WarningList.vue'
 import LogViewer from './LogViewer.vue'
 import LaravelLogPanel from './LaravelLogPanel.vue'
+import DumpsPanel from './DumpsPanel.vue'
 import CommandsPanel from './CommandsPanel.vue'
 import ProcessToggles from './ProcessToggles.vue'
 import GroupSelect from './GroupSelect.vue'
@@ -236,6 +237,10 @@ function showLogs(process: string) {
 
         <NTabPane name="laravel-log" tab="Laravel log" display-directive="if">
           <LaravelLogPanel :app-id="app.id" />
+        </NTabPane>
+
+        <NTabPane name="dumps" tab="Dumps" display-directive="if">
+          <DumpsPanel :app="app" @changed="emit('changed', app.id)" />
         </NTabPane>
 
         <NTabPane name="commands" tab="Commands" display-directive="if">

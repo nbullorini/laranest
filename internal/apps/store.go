@@ -27,10 +27,13 @@ type App struct {
 	ReverbPort int              `json:"reverb_port"`
 	// Advanced settings (see custom.go): command overrides of built-in
 	// processes, extra processes, and serving the web through a port.
-	Commands  map[string]string `json:"commands,omitempty"`
-	Custom    []CustomProcess   `json:"custom,omitempty"`
-	WebMode   string            `json:"web_mode,omitempty"`
-	WebPort   int               `json:"web_port,omitempty"`
+	Commands map[string]string `json:"commands,omitempty"`
+	Custom   []CustomProcess   `json:"custom,omitempty"`
+	WebMode  string            `json:"web_mode,omitempty"`
+	WebPort  int               `json:"web_port,omitempty"`
+	// Dumps sends dump()/dd() to the panel (see dumps.go), through DumpPort.
+	Dumps     bool              `json:"dumps,omitempty"`
+	DumpPort  int               `json:"dump_port,omitempty"`
 	Detection *detect.Detection `json:"detection"`
 	CreatedAt time.Time         `json:"created_at"`
 }

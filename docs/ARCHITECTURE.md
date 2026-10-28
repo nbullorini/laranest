@@ -136,6 +136,18 @@ rest of the Linux pieces:
 | `laranest trust`: system store + NSS | The System Keychain (Safari, Chrome; macOS asks for your password), plus Firefox's profiles when `certutil` is installed (`brew install nss`). |
 | `laranest setup-ports` | Not available yet: macOS lets users bind 80/443 only on every interface, which would expose the apps to the network, so the proxy stays on 127.0.0.1:8080/8443. |
 
+## Dumps
+
+With *Capture dump() and dd()* on, the app's processes get
+`VAR_DUMPER_FORMAT=tcp://127.0.0.1:<port>` (as an environment variable, and
+as a FastCGI parameter for the web), which Laravel and Symfony's VarDumper
+honour: dumps go to that port instead of the output. A `dumps` process listens
+there: `dump-server.php` (embedded, written to the data dir), run with the
+app's PHP and its own `vendor/`, so Symfony's `DumpServer` and dumpers of the
+project's version decode and render each dump (HTML and text). It posts them to
+the daemon, which keeps the last 200 per app in memory for the panel (each
+shown in a sandboxed frame) and the MCP server (`get_dumps`, as text).
+
 ## Ports
 
 Few ports are involved, and none is chosen per app for the web:
@@ -146,6 +158,7 @@ Few ports are involved, and none is chosen per app for the web:
 - **PHP**: a unix socket per app on Linux; on Windows 4 consecutive ports in
   19100–19999, probed when the app starts (skipping other apps', Reverb's and
   Hyper-V's reserved ranges) and released when it stops.
+- **Dumps**: a port per app in 18080–18999 while capture is on.
 - **Reverb**: one port per app in 18080–18999, kept in `apps.json`; if
   another program took it, the app moves to a free one when it starts.
   Browsers reach it through the proxy (`reverb-<app>.localhost`), so `.env`

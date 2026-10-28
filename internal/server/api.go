@@ -50,6 +50,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/apps/{id}/detect", s.handleRedetect)
 	mux.HandleFunc("POST /api/apps/{id}/env", s.handleSetEnv)
 	mux.HandleFunc("GET /api/apps/{id}/logs/{process}", s.handleLogs)
+	mux.HandleFunc("GET /api/apps/{id}/dumps", s.handleDumps)
+	mux.HandleFunc("POST /api/apps/{id}/dumps", s.handleAddDump)
+	mux.HandleFunc("DELETE /api/apps/{id}/dumps", s.handleClearDumps)
 	mux.HandleFunc("GET /api/apps/{id}/laravel-log", s.handleLaravelLog)
 	mux.HandleFunc("DELETE /api/apps/{id}/laravel-log", s.handleClearLaravelLog)
 	mux.HandleFunc("GET /api/apps/{id}/commands", s.handleCommands)
@@ -343,6 +346,42 @@ func (s *Server) handleSetEnv(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.apps.SetEnv(r.PathValue("id"), req.Values)
 	respond(w, v, err)
+}
+
+// handleDumps returns the app's dump() calls after ?after=<id> (the panel polls it).
+func (s *Server) handleDumps(w http.ResponseWriter, r *http.Request) {
+	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
+	d, err := s.apps.Dumps(r.PathValue("id"), after)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+// handleAddDump receives a dump from the app's dumps process.
+func (s *Server) handleAddDump(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
+	var req struct {
+		apps.Dump
+		Header string `json:"header"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := s.apps.AddDump(r.PathValue("id"), req.Dump, req.Header); err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleClearDumps(w http.ResponseWriter, r *http.Request) {
+	if err := s.apps.ClearDumps(r.PathValue("id")); err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleLaravelLog returns the newest entries of the app's storage/logs.

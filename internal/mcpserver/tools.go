@@ -57,6 +57,7 @@ type updateInput struct {
 	Commands  map[string]string `json:"commands,omitempty" jsonschema:"advanced: replace the command of built-in processes (keys: web, queue, horizon, scheduler, reverb, vite); an empty value goes back to the automatic command; the whole map replaces the current one. The web command is only used with web_mode=port and must listen on {port}. Placeholders: {url}, {path}, {reverb_port}, {port} (web only)"`
 	Custom    []customProcess   `json:"custom,omitempty" jsonschema:"advanced: the app's custom processes; the list replaces the current one (send [] to remove them all)"`
 	WebMode   *string           `json:"web_mode,omitempty" jsonschema:"advanced: empty string = PHP-FPM/php-cgi (automatic); port = serve the app with commands.web (Octane, a custom server)"`
+	Dumps     *bool             `json:"dumps,omitempty" jsonschema:"capture dump() and dd() in Laranest instead of the page or terminal (read them with get_dumps)"`
 }
 
 type restartInput struct {
@@ -92,6 +93,11 @@ type laravelLogInput struct {
 	Search string `json:"search,omitempty" jsonschema:"only entries containing this text (case-insensitive)"`
 	File   string `json:"file,omitempty" jsonschema:"a file in storage/logs such as laravel-2026-10-28.log; default: the most recent"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"how many of the newest entries (default 10, max 100)"`
+}
+
+type dumpsInput struct {
+	ID    string `json:"id" jsonschema:"the app's id"`
+	Limit int    `json:"limit,omitempty" jsonschema:"how many of the newest dumps (default 10, max 50)"`
 }
 
 type fixInput struct {
@@ -221,6 +227,9 @@ func register(s *mcp.Server, c *client) {
 			}
 			if in.WebMode != nil {
 				body["web_mode"] = *in.WebMode
+			}
+			if in.Dumps != nil {
+				body["dumps"] = *in.Dumps
 			}
 			if len(body) == 0 {
 				return errorResult("nothing to change: pass at least one setting")
@@ -386,6 +395,39 @@ func register(s *mcp.Server, c *client) {
 					}
 					b.WriteString(strings.Join(lines, "\n") + "\n")
 				}
+			}
+			return textResult(b.String())
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "get_dumps", Annotations: read,
+		Description: "The newest dump()/dd() calls of an app, as text with the file and line of each and the request or command that made it. Only apps with dumps capture on (update_app dumps=true) record them."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in dumpsInput) (*mcp.CallToolResult, any, error) {
+			data, err := c.do(ctx, http.MethodGet, "/apps/"+url.PathEscape(in.ID)+"/dumps", nil)
+			if err != nil {
+				return result(nil, err)
+			}
+			var d struct {
+				Dumps []struct {
+					Time               time.Time
+					Text, File, Origin string
+					Line               int
+				} `json:"dumps"`
+			}
+			if err := json.Unmarshal(data, &d); err != nil {
+				return nil, nil, err
+			}
+			if len(d.Dumps) == 0 {
+				return textResult("No dumps recorded. Is dumps capture on for this app (get_app shows dumps: true)?")
+			}
+			limit := in.Limit
+			if limit <= 0 {
+				limit = 10
+			}
+			dumps := d.Dumps[max(0, len(d.Dumps)-min(limit, 50)):]
+			var b strings.Builder
+			for i := len(dumps) - 1; i >= 0; i-- { // newest first
+				e := dumps[i]
+				fmt.Fprintf(&b, "[%s] %s:%d (%s)\n%s\n\n", e.Time.Format("15:04:05"), e.File, e.Line, e.Origin, e.Text)
 			}
 			return textResult(b.String())
 		})
