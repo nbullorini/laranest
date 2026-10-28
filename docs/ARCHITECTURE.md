@@ -165,7 +165,9 @@ The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
   test) and Windows (unit tests + build). The full Windows regression
   (`windows-e2e.yml`, ~15 min) runs before each release or by hand.
 - `make publish RELEASE=vX.Y.Z` tags the current commit; the Release
-  workflow runs CI and the Windows regression and publishes
+  workflow waits for that commit's CI on main (it doesn't run it again; a
+  failed or missing CI stops the release), runs the Windows regression and
+  publishes
   `laranest-linux-{amd64,arm64}`, `laranest-windows-amd64.exe`, `install.sh`,
   `install.ps1` and `SHA256SUMS`. Binaries embed the version and the commit
   (e.g. `v0.1.1+60680ba`).
