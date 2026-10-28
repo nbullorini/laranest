@@ -33,7 +33,7 @@ var (
 )
 
 // processOrder is the display/start order; web (FPM) always runs.
-var processOrder = []string{"web", "queue", "horizon", "scheduler", "reverb", "vite"}
+var processOrder = []string{"web", "queue", "horizon", "scheduler", "reverb", "vite", "dumps"}
 
 // Manager owns the registered apps, their processes and the proxy config.
 type Manager struct {
@@ -47,6 +47,7 @@ type Manager struct {
 	// cgiPorts is the first php-cgi worker port of each running app (Windows).
 	cgiPorts map[string]int
 	cmds     *commandStore
+	dumps    dumpStore
 
 	svcMu sync.Mutex
 	svc   map[string]svcEntry // app id → cached service checks
@@ -380,6 +381,7 @@ type UpdateRequest struct {
 	Commands *map[string]string `json:"commands"`
 	Custom   *[]CustomProcess   `json:"custom"`
 	WebMode  *string            `json:"web_mode"`
+	Dumps    *bool              `json:"dumps"`
 }
 
 // Update changes settings; a running app is restarted when a setting that
@@ -438,7 +440,8 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 	if req.HTTPS != nil {
 		a.HTTPS = *req.HTTPS
 	}
-	if req.ID == nil && req.PHP == nil && req.Processes == nil && req.Commands == nil && req.Custom == nil && req.WebMode == nil {
+	if req.ID == nil && req.PHP == nil && req.Processes == nil && req.Commands == nil && req.Custom == nil && req.WebMode == nil &&
+		(req.Dumps == nil || *req.Dumps == a.Dumps) {
 		err := m.store.save()
 		if req.HTTPS != nil {
 			m.applyProxyLocked()
@@ -455,6 +458,7 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 		delete(m.store.apps, id)
 		_ = os.RemoveAll(m.appStateDir(id))
 		m.cmds.rename(id, *req.ID)
+		m.dumps.forget(id)
 		a.ID = *req.ID
 		m.store.apps[a.ID] = a
 	}
@@ -482,6 +486,12 @@ func (m *Manager) Update(id string, req UpdateRequest) (View, error) {
 			a.WebPort = 0
 		}
 	}
+	if req.Dumps != nil {
+		a.Dumps = *req.Dumps
+		if !a.Dumps {
+			a.DumpPort = 0
+		}
+	}
 	err := m.store.save()
 	m.applyProxyLocked()
 	m.mu.Unlock()
@@ -502,6 +512,7 @@ func (m *Manager) Remove(id string) error {
 	delete(m.store.apps, id)
 	_ = os.RemoveAll(m.appStateDir(id))
 	m.cmds.forget(id)
+	m.dumps.forget(id)
 	m.applyProxyLocked()
 	return m.store.save()
 }
@@ -860,6 +871,9 @@ func (m *Manager) startLocked(a *App, prep prepared) error {
 		if a.WebMode == WebModePort && (a.WebPort == 0 || portInUse(a.WebPort)) {
 			a.WebPort = m.freePortLocked()
 		}
+		if a.Dumps && (a.DumpPort == 0 || portInUse(a.DumpPort)) {
+			a.DumpPort = m.freePortLocked()
+		}
 		if runtime.GOOS == "windows" && a.WebMode != WebModePort {
 			port, err := m.freeCGIPortsLocked(a.ID)
 			if err != nil {
@@ -920,6 +934,8 @@ func (m *Manager) freeCGIPortsLocked(id string) (int, error) {
 	}
 	for _, a := range m.store.apps {
 		used[a.ReverbPort] = true
+		used[a.WebPort] = true
+		used[a.DumpPort] = true
 	}
 next:
 	for base := 19100; base < 20000; base += cgiWorkers {
@@ -1002,6 +1018,9 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 		env = append(env, "NODE_EXTRA_CA_CERTS="+m.proxy.RootCert()) // Vite & co. trust local HTTPS
 	}
 	env = append(env, rt.Env()...)
+	if a.Dumps {
+		env = append(env, m.dumperEnv(a))
+	}
 	spec := func(name string, cmd ...string) units.Spec {
 		return units.Spec{
 			Unit:        unitName(a.ID, name),
@@ -1048,10 +1067,21 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 	if p.Vite {
 		specs = append(specs, spec("vite", tools.NodeCommand(prep.nodeBin, "npm", "run", "dev")...))
 	}
+	var dumpsErr error
+	if a.Dumps {
+		// The dump server must not send its own dumps to itself.
+		if cmd, err := m.dumpsCommand(a, prep); err != nil {
+			dumpsErr = fmt.Errorf("dumps: %w", err)
+		} else {
+			s := spec("dumps", cmd...)
+			s.Env = slices.DeleteFunc(slices.Clone(env), func(e string) bool { return strings.HasPrefix(e, "VAR_DUMPER_FORMAT=") })
+			specs = append(specs, s)
+		}
+	}
 	// Overrides replace the automatic command of a built-in process. A
 	// command that can't run (a program that isn't installed) only keeps its
 	// own process down: the rest of the app starts, and the error is reported.
-	var errs []error
+	errs := []error{dumpsErr}
 	resolved := specs[:0]
 	for _, s := range specs {
 		if line, ok := a.Commands[s.Name]; ok && s.Name != "web" {
@@ -1100,6 +1130,9 @@ func (m *Manager) applyProxyLocked() error {
 	var sites []proxy.Site
 	for _, a := range m.store.list() {
 		s := proxy.Site{Host: m.appHost(a.ID), Root: filepath.Join(a.Path, "public"), HTTPS: a.HTTPS}
+		if a.Dumps && a.DumpPort != 0 {
+			s.Env = map[string]string{"VAR_DUMPER_FORMAT": "tcp://127.0.0.1:" + strconv.Itoa(a.DumpPort)}
+		}
 		if m.isRunning(a) && a.WebMode == WebModePort {
 			s.Upstream = "127.0.0.1:" + strconv.Itoa(a.WebPort)
 		} else if m.isRunning(a) {
@@ -1144,12 +1177,13 @@ func (m *Manager) ensureReverbPortLocked(a *App) {
 }
 
 // freePortLocked picks a free port in 18080–18999 that no app has kept for
-// Reverb or its web command.
+// Reverb, its web command or its dumps.
 func (m *Manager) freePortLocked() int {
 	used := map[int]bool{}
 	for _, o := range m.store.apps {
 		used[o.ReverbPort] = true
 		used[o.WebPort] = true
+		used[o.DumpPort] = true
 	}
 	for port := 18080; port < 19000; port++ {
 		if used[port] {
@@ -1284,6 +1318,7 @@ func enabledBuiltins(a *App) []string {
 		"scheduler": a.Processes.Scheduler,
 		"reverb":    a.Processes.Reverb,
 		"vite":      a.Processes.Vite,
+		"dumps":     a.Dumps,
 	}
 	var out []string
 	for _, name := range processOrder {

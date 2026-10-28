@@ -89,6 +89,7 @@ export interface AppView {
   web_mode?: '' | 'port'
   /** What each built-in process runs unless overridden. */
   default_commands: Record<string, string>
+  dumps?: boolean
 }
 
 export interface CustomProcess {
@@ -175,6 +176,23 @@ export interface LaravelLogEntry {
   details?: string
 }
 
+export interface Dump {
+  id: number
+  time: string
+  html: string
+  text: string
+  file?: string
+  line?: number
+  name?: string
+  origin?: string
+}
+
+export interface Dumps {
+  header: string
+  dumps: Dump[]
+  last: number
+}
+
 export interface LaravelLog {
   files: { name: string; size: number; modified: string }[]
   file: string
@@ -228,7 +246,7 @@ export const api = {
     request<AppResult>('POST', '/apps', req),
   update: (id: string, patch: {
     id?: string; group?: string; https?: boolean; php?: string; processes?: Processes
-    commands?: Record<string, string>; custom?: CustomProcess[]; web_mode?: string
+    commands?: Record<string, string>; custom?: CustomProcess[]; web_mode?: string; dumps?: boolean
   }) =>
     request<AppResult>('PATCH', `/apps/${id}`, patch),
   remove: (id: string) => request<void>('DELETE', `/apps/${id}`),
@@ -239,6 +257,8 @@ export const api = {
   setEnv: (id: string, values: Record<string, string>) =>
     request<AppResult>('POST', `/apps/${id}/env`, { values }),
   logsURL: (id: string, process: string) => `/api/apps/${id}/logs/${process}`,
+  dumps: (id: string, after = 0) => request<Dumps>('GET', `/apps/${id}/dumps?after=${after}`),
+  clearDumps: (id: string) => request<void>('DELETE', `/apps/${id}/dumps`),
   laravelLog: (id: string, q: { file?: string; level?: string; q?: string; limit?: number }) =>
     request<LaravelLog>('GET', `/apps/${id}/laravel-log?${new URLSearchParams(
       Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))}`),
@@ -257,6 +277,7 @@ export const processLabels: Record<string, string> = {
   scheduler: 'Scheduler',
   reverb: 'Reverb',
   vite: 'Vite (dev)',
+  dumps: 'Dumps',
 }
 
 /** PHP versions for a selector: installed first, then downloadable ones. */

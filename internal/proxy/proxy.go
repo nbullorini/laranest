@@ -40,6 +40,8 @@ type Site struct {
 	ReverbHost string // reverb-miapp.localhost; "" if Reverb is off
 	ReverbAddr string // 127.0.0.1:8xxx
 	HTTPS      bool   // served over TLS; plain HTTP redirects to it
+	// Env are extra FastCGI parameters for the app's PHP ($_SERVER).
+	Env map[string]string
 }
 
 type Proxy struct {
@@ -245,6 +247,7 @@ func fastCGI(s Site) obj {
 			"protocol":   "fastcgi",
 			"root":       s.Root,
 			"split_path": []string{".php"},
+			"env":        s.Env,
 		},
 		"upstreams": upstreams,
 	}

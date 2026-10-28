@@ -17,6 +17,8 @@ starts its workers and serves it at `https://<app>.localhost`.
   with live logs.
 - **The Laravel log, readable:** `storage/logs` in the panel, by level and
   searchable, each exception with its stack trace.
+- **`dump()` and `dd()` in the panel** (optional, per app): every dump with the
+  file and line that made it and the request or command it came from.
 - **HTTPS by default** with a local certificate authority your browsers trust.
 - **Tells you what is wrong:** missing `.env` values, an invalid `APP_KEY`,
   databases or Redis that reject the credentials, unmigrated databases,
