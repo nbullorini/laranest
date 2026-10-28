@@ -49,7 +49,7 @@ func trustCmd() *cobra.Command {
 					}
 					fmt.Println("✓ Linux trusts Laranest.")
 					if !trust.Check(root, env).NSSTool {
-						fmt.Println("! Firefox and Chrome on Linux need certutil: sudo apt install libnss3-tools && laranest trust")
+						fmt.Printf("! Firefox and Chrome on Linux need certutil: %s && laranest trust\n", trust.NSSToolInstall())
 					}
 				}
 			}

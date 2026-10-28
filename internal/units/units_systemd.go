@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	sd "github.com/coreos/go-systemd/v22/dbus"
@@ -14,6 +15,9 @@ import (
 
 type Manager struct {
 	conn *sd.Conn
+	// noBackoff is set once systemd rejects RestartSteps (added in systemd
+	// 254: Ubuntu 22.04, Debian 12 and RHEL 9 have older ones).
+	noBackoff atomic.Bool
 }
 
 // New connects to the systemd user manager. stateDir is unused: the journal
@@ -45,16 +49,30 @@ func (m *Manager) Start(ctx context.Context, s Spec) error {
 		prop("Environment", s.Env),
 		prop("Restart", "always"),
 		prop("RestartUSec", usec(time.Second)),
-		prop("RestartSteps", uint32(5)), // exponential backoff 1s → 30s
-		prop("RestartMaxDelayUSec", usec(30*time.Second)),
 		prop("StartLimitIntervalUSec", uint64(0)), // never give up restarting
 		prop("TimeoutStopUSec", usec(10*time.Second)),
 		prop("CollectMode", "inactive-or-failed"),
 		prop("SyslogIdentifier", s.Unit),
 	}
-	return m.wait(ctx, func(ch chan<- string) (int, error) {
-		return m.conn.StartTransientUnitContext(ctx, s.Unit, "replace", props, ch)
-	})
+	backoff := []sd.Property{
+		prop("RestartSteps", uint32(5)), // exponential backoff 1s → 30s
+		prop("RestartMaxDelayUSec", usec(30*time.Second)),
+	}
+	start := func(props []sd.Property) error {
+		return m.wait(ctx, func(ch chan<- string) (int, error) {
+			return m.conn.StartTransientUnitContext(ctx, s.Unit, "replace", props, ch)
+		})
+	}
+	if m.noBackoff.Load() {
+		return start(props)
+	}
+	err := start(append(props, backoff...))
+	if err != nil && strings.Contains(err.Error(), "RestartSteps") {
+		// An older systemd rejects the whole unit: restart every second instead.
+		m.noBackoff.Store(true)
+		return start(props)
+	}
+	return err
 }
 
 // Stop stops a unit; stopping a unit that doesn't exist is not an error.

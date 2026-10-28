@@ -46,7 +46,8 @@ inside WSL).
 
 Requirements:
 
-- **Linux / WSL2:** systemd (Ubuntu 22.04+; on WSL2, `[boot] systemd=true` in
+- **Linux / WSL2:** any distribution with systemd — Ubuntu 22.04+, Debian 12+,
+  Fedora, RHEL/Rocky/Alma 9, Arch… (on WSL2, `[boot] systemd=true` in
   `/etc/wsl.conf`, the default on current Ubuntu images). Run it as your normal
   user, not root: it puts `laranest` in `~/.local/bin` and starts it as a
   systemd user service, without sudo. On WSL, if your distro logs in as

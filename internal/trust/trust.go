@@ -34,7 +34,7 @@ type Status struct {
 	System bool `json:"system"`
 	// Windows user store, on Windows or on WSL when the profile is known.
 	Windows *bool `json:"windows,omitempty"`
-	// NSSTool reports whether certutil (libnss3-tools) is available for Firefox/Chrome on Linux.
+	// NSSTool reports whether certutil (NSS tools) is available for Firefox/Chrome on Linux.
 	NSSTool bool `json:"nss_tool"`
 }
 
@@ -155,6 +155,37 @@ func certutil() string {
 		return abs
 	}
 	return "certutil.exe"
+}
+
+// NSSToolInstall is the command that installs certutil on this distribution.
+func NSSToolInstall() string {
+	data, _ := os.ReadFile("/etc/os-release")
+	return nssToolInstall(string(data))
+}
+
+func nssToolInstall(osRelease string) string {
+	ids := ""
+	for _, line := range strings.Split(osRelease, "\n") {
+		if v, ok := strings.CutPrefix(line, "ID="); ok {
+			ids += " " + strings.Trim(v, `"`)
+		}
+		if v, ok := strings.CutPrefix(line, "ID_LIKE="); ok {
+			ids += " " + strings.Trim(v, `"`)
+		}
+	}
+	for _, f := range strings.Fields(ids) {
+		switch f {
+		case "debian", "ubuntu":
+			return "sudo apt install libnss3-tools"
+		case "fedora", "rhel", "centos":
+			return "sudo dnf install nss-tools"
+		case "arch":
+			return "sudo pacman -S nss"
+		case "suse", "opensuse":
+			return "sudo zypper install mozilla-nss-tools"
+		}
+	}
+	return "install your distribution's NSS tools (certutil)"
 }
 
 func haveCertutil() bool {
