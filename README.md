@@ -66,7 +66,7 @@ Requirements:
   systemd user service, without sudo. On WSL, if your distro logs in as
   `root`, create a user first (`adduser <name>`), set `[user] default=<name>`
   in `/etc/wsl.conf` and restart the distro.
-- **macOS:** macOS 13 or later, Apple silicon or Intel. Same command,
+- **macOS:** macOS 13 or later, Intel or Apple silicon (beta). Same command,
   as your normal user: `laranest` goes into `~/.local/bin` and starts as a
   launchd agent of your user (`~/Library/LaunchAgents/dev.laranest.plist`),
   without administrator rights.
@@ -79,7 +79,8 @@ Requirements:
 | | Platforms |
 |---|---|
 | **Tested** (CI on every change, or by hand) | Ubuntu 24.04 (x86_64, ARM64) and 22.04 · WSL2 with Ubuntu 24.04 · Windows 11 · Windows Server 2025 · macOS 15 (Intel) |
-| **Supported** (same requirements, not tested on every change) | Debian 11, 12, 13 · Ubuntu 20.04+ · RHEL, Rocky and Alma 8, 9, 10 · CentOS Stream 9, 10 · Fedora · Arch, Manjaro, openSUSE, Linux Mint, Pop!_OS · WSL2 with any of them · Windows 10 (64-bit) · Windows on ARM64 (x64 emulation) · macOS 13, 14 and 15 on Apple silicon and Intel |
+| **Supported** (same requirements, not tested on every change) | Debian 11, 12, 13 · Ubuntu 20.04+ · RHEL, Rocky and Alma 8, 9, 10 · CentOS Stream 9, 10 · Fedora · Arch, Manjaro, openSUSE, Linux Mint, Pop!_OS · WSL2 with any of them · Windows 10 (64-bit) · Windows on ARM64 (x64 emulation) · macOS 13 and 14 on Intel |
+| **Beta** (built and released, not yet tested on a real machine) | macOS on Apple silicon (M1 and later) |
 | **Not supported** | CentOS 7 and Ubuntu 18.04 (systemd and glibc too old) · distributions without systemd or glibc (Alpine, Void, Devuan, Gentoo with OpenRC) · WSL1 · 32-bit Windows |
 
 On Linux, Laranest needs systemd 236+ with user sessions and glibc 2.28+ (for
