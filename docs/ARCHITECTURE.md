@@ -122,7 +122,7 @@ the `public/hot` it leaves behind. Windows' socket errors are localized, so
 port problems are explained from the error code (`WSAEADDRINUSE`,
 `WSAEACCES` for ranges reserved by Hyper-V).
 
-## macOS (beta)
+## macOS
 
 macOS has no systemd either; it reuses the Windows supervisor and keeps the
 rest of the Linux pieces:

@@ -146,7 +146,7 @@ jobs:
           go vet ./...
           go test ./...
 
-  # macOS (beta): unit tests, then the end-to-end test on a real Mac with the
+  # macOS: unit tests, then the end-to-end test on a real Mac with the
   # launchd agent, PHP for macOS and Laranest's own process supervisor. Apple
   # silicon runners are often unavailable, so that one runs on demand
   # (macos-arm64.yml) instead of blocking every push.
