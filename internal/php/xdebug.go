@@ -77,6 +77,12 @@ func (in *Installer) xdebugFile(ctx context.Context, rt Runtime) (string, error)
 	}
 	_, err, _ := in.group.Do("xdebug-"+rt.Version, func() (any, error) {
 		rel, err := in.Catalog.Find(ctx, rt.Version)
+		if err == nil && rel.XdebugURL == "" {
+			// The cached catalog may predate the build that added it.
+			if _, err = in.Catalog.Refresh(ctx); err == nil {
+				rel, err = in.Catalog.Find(ctx, rt.Version)
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
