@@ -34,3 +34,19 @@ func TestLaranestHomeWins(t *testing.T) {
 		}
 	}
 }
+
+func TestAvoidPorts(t *testing.T) {
+	cfg := Config{PanelAddr: "127.0.0.1:9151", HTTPPort: 8080, HTTPSPort: 443}
+	changes := cfg.AvoidPorts(map[int]bool{9150: true, 9151: true, 8080: true, 8081: true})
+	if len(changes) != 2 {
+		t.Errorf("changes = %q, want the panel and HTTP ports", changes)
+	}
+	if cfg.PanelAddr == "127.0.0.1:9150" || cfg.PanelAddr == "127.0.0.1:9151" || cfg.HTTPPort == 8080 || cfg.HTTPPort == 8081 || cfg.HTTPSPort != 443 {
+		t.Errorf("unexpected config %+v", cfg)
+	}
+
+	same := Config{PanelAddr: "127.0.0.1:9160", HTTPPort: 80, HTTPSPort: 443}
+	if changes := same.AvoidPorts(map[int]bool{8080: true}); len(changes) != 0 || same.PanelAddr != "127.0.0.1:9160" {
+		t.Errorf("free ports must stay: %q %+v", changes, same)
+	}
+}

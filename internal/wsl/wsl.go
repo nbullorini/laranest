@@ -10,13 +10,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
 // Command runs a Windows program from WSL. Interop needs WSL_INTEROP, which
 // terminals have but systemd services don't: then use the newest interop
-// socket WSL created (one per session).
+// socket WSL created (one per session). Only the distro's default user gets
+// Windows' folders in PATH (not services, nor `su other`), so System32
+// programs are also found there.
 func Command(name string, args ...string) *exec.Cmd {
+	if _, err := exec.LookPath(name); err != nil {
+		if p := filepath.Join(system32, name); fileExists(p) {
+			name = p
+		}
+	}
 	cmd := exec.Command(name, args...)
 	if _, err := os.Stat("/mnt/c"); err == nil {
 		cmd.Dir = "/mnt/c" // a WSL working dir makes cmd.exe complain about UNC paths
@@ -27,6 +35,13 @@ func Command(name string, args ...string) *exec.Cmd {
 		}
 	}
 	return cmd
+}
+
+const system32 = "/mnt/c/Windows/System32"
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func newestInterop() string {
@@ -78,6 +93,73 @@ func DetectEnv() (Env, error) {
 	}
 	env.Profile = strings.TrimSpace(string(path))
 	return env, nil
+}
+
+// WindowsPortsInUse returns the TCP ports Windows programs listen on. WSL
+// forwards localhost to a distro only when Windows doesn't use the port, so
+// Laranest must avoid them (a Windows Laranest takes 9151 when WSL's has
+// 9150, which a second WSL user would then pick). Ports WSL's own forwarder
+// (wslrelay.exe) also holds are left out: they already reach the distro.
+func WindowsPortsInUse() (map[int]bool, error) {
+	out, err := Command("netstat.exe", "-ano", "-p", "TCP").Output()
+	if err != nil {
+		return nil, fmt.Errorf("netstat.exe: %w", err)
+	}
+	out6, _ := Command("netstat.exe", "-ano", "-p", "TCPv6").Output()
+	relays := map[string]bool{}
+	if tl, err := Command("tasklist.exe", "/fo", "csv", "/nh", "/fi", "imagename eq wslrelay.exe").Output(); err == nil {
+		relays = csvPIDs(string(tl), "wslrelay.exe")
+	}
+	return listeningPorts(string(out)+string(out6), relays), nil
+}
+
+// listeningPorts parses `netstat -ano` output. The state column is
+// localized (LISTENING, ABIERTO…), so a listener is recognized by its
+// unspecified foreign address instead.
+func listeningPorts(netstat string, relayPIDs map[string]bool) map[int]bool {
+	ports, relayed := map[int]bool{}, map[int]bool{}
+	for _, line := range strings.Split(netstat, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 5 || !strings.EqualFold(f[0], "TCP") {
+			continue
+		}
+		if f[2] != "0.0.0.0:0" && f[2] != "[::]:0" {
+			continue
+		}
+		i := strings.LastIndex(f[1], ":")
+		if i < 0 {
+			continue
+		}
+		host := f[1][:i]
+		if host != "127.0.0.1" && host != "0.0.0.0" && host != "[::1]" && host != "[::]" {
+			continue // a LAN address doesn't block localhost forwarding
+		}
+		port, err := strconv.Atoi(f[1][i+1:])
+		if err != nil {
+			continue
+		}
+		if relayPIDs[f[4]] {
+			relayed[port] = true
+		} else {
+			ports[port] = true
+		}
+	}
+	for port := range relayed {
+		delete(ports, port)
+	}
+	return ports
+}
+
+// csvPIDs reads the PIDs of image from `tasklist /fo csv /nh` output.
+func csvPIDs(tasklist, image string) map[string]bool {
+	pids := map[string]bool{}
+	for _, line := range strings.Split(tasklist, "\n") {
+		f := strings.Split(strings.TrimSpace(line), ",")
+		if len(f) >= 2 && strings.EqualFold(strings.Trim(f[0], `"`), image) {
+			pids[strings.Trim(f[1], `"`)] = true
+		}
+	}
+	return pids
 }
 
 // Status is the keep-alive state shown in the panel.

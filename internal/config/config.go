@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 )
 
 const DefaultPanelPort = 9150
@@ -104,11 +105,11 @@ func Load() (Config, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		// First run: don't default to a port we can't use (unprivileged, or taken by apache/nginx).
-		cfg.HTTPPort = firstUsablePort(80, 8080, 8081, 8082, 8088, 8090)
-		cfg.HTTPSPort = firstUsablePort(443, 8443, 9443)
+		cfg.HTTPPort = firstUsablePort(nil, httpPorts...)
+		cfg.HTTPSPort = firstUsablePort(nil, httpsPorts...)
 		// On Windows the panel port may be taken by WSL's localhost forwarding
 		// of a Laranest running inside WSL.
-		cfg.PanelAddr = fmt.Sprintf("127.0.0.1:%d", firstUsablePort(DefaultPanelPort, DefaultPanelPort+1, DefaultPanelPort+2, DefaultPanelPort+3))
+		cfg.PanelAddr = fmt.Sprintf("127.0.0.1:%d", firstUsablePort(nil, panelPorts...))
 		return cfg, nil
 	}
 	if err != nil {
@@ -119,10 +120,10 @@ func Load() (Config, error) {
 		return cfg, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	if cfg.HTTPPort == 0 {
-		cfg.HTTPPort = firstUsablePort(80, 8080, 8081, 8082, 8088, 8090)
+		cfg.HTTPPort = firstUsablePort(nil, httpPorts...)
 	}
 	if cfg.HTTPSPort == 0 {
-		cfg.HTTPSPort = firstUsablePort(443, 8443, 9443)
+		cfg.HTTPSPort = firstUsablePort(nil, httpsPorts...)
 	}
 	return cfg, nil
 }
@@ -147,9 +148,59 @@ func Save(cfg Config) error {
 	return os.Rename(tmp, path)
 }
 
-// firstUsablePort returns the first candidate we can bind on loopback.
-func firstUsablePort(candidates ...int) int {
+// Candidate ports, most preferred first.
+var (
+	httpPorts  = []int{80, 8080, 8081, 8082, 8088, 8090}
+	httpsPorts = []int{443, 8443, 9443, 10443, 11443}
+	panelPorts = []int{DefaultPanelPort, DefaultPanelPort + 1, DefaultPanelPort + 2, DefaultPanelPort + 3,
+		DefaultPanelPort + 4, DefaultPanelPort + 5, DefaultPanelPort + 6, DefaultPanelPort + 7}
+)
+
+// AvoidPorts moves the panel, HTTP and HTTPS ports off those in busy (used
+// elsewhere, e.g. by Windows when running in WSL) to the first usable
+// candidate, and describes each change.
+func (c *Config) AvoidPorts(busy map[int]bool) []string {
+	host, p, err := net.SplitHostPort(c.PanelAddr)
+	panel, _ := strconv.Atoi(p)
+	if err != nil || panel == 0 {
+		host, panel = "127.0.0.1", 0
+	}
+	type slot struct {
+		name       string
+		port       *int
+		candidates []int
+	}
+	slots := []slot{{"panel", &panel, panelPorts}, {"HTTP", &c.HTTPPort, httpPorts}, {"HTTPS", &c.HTTPSPort, httpsPorts}}
+	var changes []string
+	for i, s := range slots {
+		if !busy[*s.port] {
+			continue
+		}
+		taken := func(port int) bool {
+			if busy[port] {
+				return true
+			}
+			for j, o := range slots {
+				if j != i && *o.port == port {
+					return true
+				}
+			}
+			return false
+		}
+		old := *s.port
+		*s.port = firstUsablePort(taken, s.candidates...)
+		changes = append(changes, fmt.Sprintf("%s port %d is in use on Windows: using %d", s.name, old, *s.port))
+	}
+	c.PanelAddr = net.JoinHostPort(host, strconv.Itoa(panel))
+	return changes
+}
+
+// firstUsablePort returns the first candidate not in skip that we can bind on loopback.
+func firstUsablePort(skip func(int) bool, candidates ...int) int {
 	for _, p := range candidates {
+		if skip != nil && skip(p) {
+			continue
+		}
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 		if err == nil {
 			ln.Close()

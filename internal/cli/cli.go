@@ -102,6 +102,14 @@ func installCmd() *cobra.Command {
 				} else {
 					cfg.WSLDistro, cfg.WindowsProfile = env.Distro, env.Profile
 				}
+				// Windows' localhost only reaches WSL on ports Windows doesn't use.
+				if busy, err := wsl.WindowsPortsInUse(); err != nil {
+					fmt.Fprintln(os.Stderr, "warning: could not check the ports used on Windows:", err)
+				} else {
+					for _, change := range cfg.AvoidPorts(busy) {
+						fmt.Println(change)
+					}
+				}
 			}
 			if err := config.Save(cfg); err != nil {
 				return err
