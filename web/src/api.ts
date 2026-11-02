@@ -211,6 +211,7 @@ export interface WSLStatus {
   is_wsl: boolean
   supported: boolean
   distro: string
+  user: string
   config_file: string
   keep_alive: boolean
   autostart: boolean

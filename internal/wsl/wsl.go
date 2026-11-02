@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -167,6 +168,7 @@ type Status struct {
 	IsWSL      bool   `json:"is_wsl"`
 	Supported  bool   `json:"supported"` // false if the Windows profile is unknown
 	Distro     string `json:"distro"`
+	User       string `json:"user"`        // the Linux user running Laranest (wsl.exe -u)
 	ConfigFile string `json:"config_file"` // the .wslconfig path, as Windows shows it
 	KeepAlive  bool   `json:"keep_alive"`  // instanceIdleTimeout = -1
 	Autostart  bool   `json:"autostart"`   // starts the distro at Windows login
@@ -180,6 +182,9 @@ func (e Env) startupScript() string {
 
 func (e Env) Status() Status {
 	s := Status{IsWSL: IsWSL(), Distro: e.Distro}
+	if u, err := user.Current(); err == nil {
+		s.User = u.Username
+	}
 	if !s.IsWSL || e.Profile == "" {
 		return s
 	}
