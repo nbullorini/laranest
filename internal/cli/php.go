@@ -282,7 +282,14 @@ func updatePHP(versions []string) error {
 var errDaemonDown = errors.New("daemon unavailable")
 
 func daemonUpdatePHP(cfg config.Config, version string) ([]string, error) {
-	resp, err := http.Post("http://"+cfg.PanelAddr+"/api/php/"+version+"/update", "application/json", nil)
+	req, err := http.NewRequest(http.MethodPost, "http://"+cfg.PanelAddr+"/api/php/"+version+"/update", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := config.Authorize(req); err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, errDaemonDown
 	}

@@ -141,8 +141,11 @@ func stopDaemon() {
 	pid := daemonPID()
 	if cfg, err := config.Load(); err == nil {
 		client := http.Client{Timeout: 5 * time.Second}
-		if resp, err := client.Post("http://"+cfg.PanelAddr+"/api/shutdown", "application/json", nil); err == nil {
-			resp.Body.Close()
+		req, _ := http.NewRequest(http.MethodPost, "http://"+cfg.PanelAddr+"/api/shutdown", nil)
+		if config.Authorize(req) == nil {
+			if resp, err := client.Do(req); err == nil {
+				resp.Body.Close()
+			}
 		}
 	}
 	if pid == 0 {

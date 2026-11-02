@@ -24,7 +24,9 @@ $ProgressPreference = 'SilentlyContinue'
 New-Item -ItemType Directory -Force "$Root\bin", "$Root\home\config", "$Root\projects", "$Root\logs", "$Root\results" | Out-Null
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) # -File passes "a,b" as one string
 # A daemon left from a previous run holds the binary: stop it to update it.
-try { Invoke-RestMethod -Method Post 'http://127.0.0.1:9170/api/shutdown' -TimeoutSec 5 | Out-Null; Start-Sleep 3 } catch {}
+# The API needs the instance's token (the daemon creates it on first start).
+function Token { "$(Get-Content "$Root\home\config\token" -ErrorAction SilentlyContinue)".Trim() }
+try { Invoke-RestMethod -Method Post 'http://127.0.0.1:9170/api/shutdown' -Headers @{ Authorization = "Bearer $(Token)" } -TimeoutSec 5 | Out-Null; Start-Sleep 3 } catch {}
 Copy-Item -Force $Laranest "$Root\bin\laranest.exe"
 $LN = "$Root\bin\laranest.exe"
 $env:LARANEST_HOME = "$Root\home"
@@ -57,7 +59,8 @@ $project = {
   $url = "https://$id.localhost:$HTTPS"
   $steps = New-Object System.Collections.ArrayList
   function Api($method, $path, $body = $null) {
-    $p = @{ Method = $method; Uri = "$API$path"; ContentType = 'application/json'; TimeoutSec = 900 }
+    $token = "$(Get-Content "$Root\home\config\token" -ErrorAction SilentlyContinue)".Trim()
+    $p = @{ Method = $method; Uri = "$API$path"; ContentType = 'application/json'; TimeoutSec = 900; Headers = @{ Authorization = "Bearer $token" } }
     if ($null -ne $body) { $p.Body = ($body | ConvertTo-Json -Depth 6 -Compress) }
     try { Invoke-RestMethod @p } catch { $r = $_.ErrorDetails.Message; try { $r | ConvertFrom-Json } catch { @{ error = "$_" } } }
   }

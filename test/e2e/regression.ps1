@@ -22,7 +22,8 @@ Add-Type -AssemblyName System.Net.Http
 # php-cgi helpers next to itself.
 $Bin = "$Root\bin"
 if (Test-Path "$Root\home") {
-  try { Invoke-RestMethod -Method Post "http://127.0.0.1:9180/api/shutdown" -TimeoutSec 5 | Out-Null; Start-Sleep 3 } catch {}
+  $old = "$(Get-Content "$Root\home\config\token" -ErrorAction SilentlyContinue)".Trim()
+  try { Invoke-RestMethod -Method Post "http://127.0.0.1:9180/api/shutdown" -Headers @{ Authorization = "Bearer $old" } -TimeoutSec 5 | Out-Null; Start-Sleep 3 } catch {}
   Remove-Item -Recurse -Force "$Root\home" -ErrorAction SilentlyContinue
 }
 New-Item -ItemType Directory -Force "$Bin", "$Root\home\config", "$Root\apps" | Out-Null
@@ -33,6 +34,9 @@ $PANEL = '127.0.0.1:9180'; $HTTP = 8180; $HTTPS = 8580
 $API = "http://$PANEL/api"
 $Data = "$Root\home\data"
 $CA = "$Root\home\state\caddy\pki\authorities\local\root.crt"
+# The API token: the daemon would create one; the tests set it to know it.
+$Token = [guid]::NewGuid().ToString('N')
+Set-Content -Encoding ascii "$Root\home\config\token" $Token
 Set-Content -Encoding ascii "$Root\home\config\config.json" "{`"panel_addr`":`"$PANEL`",`"http_port`":$HTTP,`"https_port`":$HTTPS,`"domain`":`"localhost`"}"
 
 $script:Pass = 0; $script:Fail = 0; $script:Failed = @()
@@ -50,6 +54,7 @@ $client.Timeout = [TimeSpan]::FromSeconds(60)
 # Req calls the API without PowerShell's quoting problems with native curl.
 function Req($method, $path, $body = $null, $headers = @{}) {
   $msg = New-Object System.Net.Http.HttpRequestMessage ([System.Net.Http.HttpMethod]::new($method)), "$API$path"
+  if (-not $headers.ContainsKey('Authorization')) { $msg.Headers.TryAddWithoutValidation('Authorization', "Bearer $Token") | Out-Null }
   foreach ($k in $headers.Keys) { $msg.Headers.TryAddWithoutValidation($k, $headers[$k]) | Out-Null }
   if ($null -ne $body) { $msg.Content = New-Object System.Net.Http.StringContent ($body | ConvertTo-Json -Depth 6 -Compress), ([Text.Encoding]::UTF8), 'application/json' }
   $resp = $client.SendAsync($msg).Result
@@ -108,6 +113,8 @@ Eq 'foreign Host -> 403' (Code "$API/health" -HostHeader 'evil.com') 403
 Eq 'POST cross-origin -> 403' (Req POST '/apps/x/stop' $null @{ Origin = 'http://evil.localhost' }).Code 403
 Eq 'SPA route -> index' (Code "http://$PANEL/apps/whatever") 200
 Eq 'unknown API -> 404' (Req GET '/nope').Code 404
+Eq 'API with a wrong token -> 401' (Req GET '/apps' $null @{ Authorization = 'Bearer nope' }).Code 401
+Eq 'API without the token -> 401' (& curl.exe -s -o NUL -w '%{http_code}' "$API/apps") 401
 $SYS = (Req GET '/system').Json
 Eq 'configured ports' "$($SYS.http_port)/$($SYS.https_port)" "$HTTP/$HTTPS"
 Eq 'proxy without errors' "$($SYS.proxy_error)" ''
@@ -195,7 +202,7 @@ Check 'a crashed worker restarts on its own' { WaitFor 15 { $q = Proc 'rg-demo' 
 $P = (Proc 'rg-demo' 'queue').pid
 Req POST '/apps/rg-demo/restart' @{ process = 'queue' } | Out-Null
 Check 'restart a process' { (Proc 'rg-demo' 'queue').pid -ne $P }
-$logs = curl.exe -s -N --max-time 3 "$API/apps/rg-demo/logs/queue"
+$logs = curl.exe -s -N --max-time 3 "$API/apps/rg-demo/logs/queue?token=$Token"
 Has 'live logs (SSE)' ($logs -join "`n") 'data: {'
 Eq 'logs of an unknown process -> error' (Req GET '/apps/rg-demo/logs/nope').Code 422
 Check 'logs are also written to a file' { (Get-ChildItem "$Root\home\state\logs\laranest-rg-demo-queue.log").Length -gt 0 }

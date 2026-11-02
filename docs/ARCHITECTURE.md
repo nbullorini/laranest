@@ -242,6 +242,17 @@ read-only/destructive hints so clients can ask before the risky ones.
 The panel can run commands, so it listens on `127.0.0.1` only, rejects foreign
 `Host` headers (DNS rebinding) and cross-origin mutating requests (CSRF).
 
+Loopback is shared by every user of the machine, so the API (everything under
+`/api/` except `/api/health`) also needs the owner's token: a random value in
+`<config dir>/token`, readable only by that user (`0600`; on Windows,
+`%LOCALAPPDATA%`'s per-user ACL). The CLI, the MCP server and the dump server
+(through its environment, not its arguments, which `ps` shows) send it as
+`Authorization: Bearer`. The browser gets it once in the link the installer
+prints and `laranest open` opens (`/?token=…`); the UI moves it to
+`localStorage`, which is per port, unlike cookies, which every server on
+`localhost` would receive. The UI's own files are public: without a token it
+asks for one. Log streams (`EventSource`, no headers) pass it as `?token=`.
+
 ## Releases
 
 - Every push to main and pull request that touches code runs CI (Linux

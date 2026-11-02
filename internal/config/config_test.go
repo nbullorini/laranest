@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -48,5 +49,20 @@ func TestAvoidPorts(t *testing.T) {
 	same := Config{PanelAddr: "127.0.0.1:9160", HTTPPort: 80, HTTPSPort: 443}
 	if changes := same.AvoidPorts(map[int]bool{8080: true}); len(changes) != 0 || same.PanelAddr != "127.0.0.1:9160" {
 		t.Errorf("free ports must stay: %q %+v", changes, same)
+	}
+}
+
+func TestTokenIsCreatedOnceAndPrivate(t *testing.T) {
+	t.Setenv("LARANEST_HOME", t.TempDir())
+	a, err := Token()
+	if err != nil || len(a) != 64 {
+		t.Fatalf("token %q, %v", a, err)
+	}
+	if b, _ := Token(); b != a {
+		t.Errorf("second call created a new token")
+	}
+	path, _ := TokenFile()
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
+		t.Errorf("token file: %v %v", info.Mode(), err)
 	}
 }

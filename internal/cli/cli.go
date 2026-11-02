@@ -37,7 +37,7 @@ func Execute() error {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(serveCmd(), installCmd(), uninstallCmd(), statusCmd(), versionCmd(), updateCmd(), mcpCmd())
+	root.AddCommand(serveCmd(), openCmd(), installCmd(), uninstallCmd(), statusCmd(), versionCmd(), updateCmd(), mcpCmd())
 	if runtime.GOOS == "linux" { // Windows lets any user listen on 80/443; macOS only on every interface
 		root.AddCommand(setupPortsCmd())
 	}
@@ -61,6 +61,11 @@ func serveCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("the panel address %s is not available (is Laranest already running?): %w", cfg.PanelAddr, err)
 			}
+			token, err := config.Token()
+			if err != nil {
+				ln.Close()
+				return fmt.Errorf("the API token: %w", err)
+			}
 			mgr, err := apps.NewManager(cfg)
 			if err != nil {
 				ln.Close()
@@ -72,7 +77,7 @@ func serveCmd() *cobra.Command {
 
 			mgr.Boot()
 			defer mgr.Shutdown()
-			return server.New(cfg, web.UI(), mgr).Serve(ctx, ln)
+			return server.New(cfg, token, web.UI(), mgr).Serve(ctx, ln)
 		},
 	}
 }
@@ -118,7 +123,12 @@ func installCmd() *cobra.Command {
 			if err := service.Install(bin, os.Getenv("PATH")); err != nil {
 				return err
 			}
-			fmt.Printf("Laranest is running → http://%s\n", strings.Replace(cfg.PanelAddr, "127.0.0.1", "localhost", 1))
+			panel, err := config.PanelURL(cfg)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Laranest is running → %s\n", panel)
+			fmt.Println("(that link signs this browser in to the panel; `laranest open` opens it again)")
 			if runtime.GOOS == "windows" {
 				fmt.Println("It starts automatically when you sign in to Windows. Open a new terminal to use the `laranest` command.")
 			}
@@ -208,7 +218,11 @@ func mcpCmd() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return mcpserver.Run(ctx, cfg.PanelAddr)
+			token, err := config.Token()
+			if err != nil {
+				return err
+			}
+			return mcpserver.Run(ctx, cfg.PanelAddr, token)
 		},
 	}
 }
@@ -270,4 +284,43 @@ func setupPortsCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func openCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "open",
+		Short: "Open the panel in your browser (signed in)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			panel, err := config.PanelURL(cfg)
+			if err != nil {
+				return err
+			}
+			if err := openBrowser(panel); err != nil {
+				fmt.Printf("Open this link in your browser:\n  %s\n", panel)
+				return nil
+			}
+			fmt.Println("Opened the panel in your browser.")
+			return nil
+		},
+	}
+}
+
+// openBrowser opens url in the user's browser (Windows' one from WSL).
+func openBrowser(url string) error {
+	var c *exec.Cmd
+	switch {
+	case runtime.GOOS == "windows":
+		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case runtime.GOOS == "darwin":
+		c = exec.Command("open", url)
+	case wsl.IsWSL():
+		c = wsl.Command("rundll32.exe", "url.dll,FileProtocolHandler", url)
+	default:
+		c = exec.Command("xdg-open", url)
+	}
+	return c.Run()
 }

@@ -1,3 +1,49 @@
+import { ref } from 'vue'
+
+// The API needs this Laranest's token (other users of the machine can reach
+// its port too). It arrives once as ?token= (from the installer or
+// `laranest open`) and is kept in localStorage, which, unlike cookies, is
+// per port: another program on localhost never sees it.
+const TOKEN_KEY = 'laranest-token'
+
+function storedToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function setToken(token: string) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // private window or blocked storage: it lasts until the page is closed
+  }
+  currentToken = token
+  signedOut.value = !token
+}
+
+let currentToken = storedToken()
+{
+  const url = new URL(window.location.href)
+  const fromURL = url.searchParams.get('token')
+  if (fromURL) {
+    url.searchParams.delete('token')
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+    currentToken = fromURL
+    try {
+      localStorage.setItem(TOKEN_KEY, fromURL)
+    } catch {
+      // see setToken
+    }
+  }
+}
+
+/** True when the panel has no (valid) token: it asks for one instead. */
+export const signedOut = ref(!currentToken && !import.meta.env.DEV) // in dev, Vite's proxy adds it
+
 export interface Processes {
   queue: boolean
   horizon: boolean
@@ -217,11 +263,14 @@ export interface AppResult {
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${currentToken}` }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (res.status === 401) signedOut.value = true
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(data.error ?? `${res.status} ${res.statusText}`)
@@ -264,7 +313,8 @@ export const api = {
   redetect: (id: string) => request<AppResult>('POST', `/apps/${id}/detect`),
   setEnv: (id: string, values: Record<string, string>) =>
     request<AppResult>('POST', `/apps/${id}/env`, { values }),
-  logsURL: (id: string, process: string) => `/api/apps/${id}/logs/${process}`,
+  // EventSource can't send headers: the token goes in the query.
+  logsURL: (id: string, process: string) => `/api/apps/${id}/logs/${process}?token=${encodeURIComponent(currentToken)}`,
   saveProject: (id: string) => request<AppResult>('POST', `/apps/${id}/project`),
   share: (id: string) => request<AppResult>('POST', `/apps/${id}/share`),
   unshare: (id: string) => request<AppResult>('DELETE', `/apps/${id}/share`),

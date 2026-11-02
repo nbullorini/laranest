@@ -26,6 +26,10 @@ cat > "$XDG_CONFIG_HOME/laranest/config.json" <<EOF
  "wsl_distro":"Ubuntu","windows_profile":"$RG/fakewin"}
 EOF
 
+# The API needs the instance's token (the daemon creates it on first start).
+curl() { command curl -H "Authorization: Bearer $(cat "${XDG_CONFIG_HOME:-$HOME/.config}/laranest/token" 2>/dev/null)" "$@"; }
+export -f curl
+
 PASS=0 FAIL=0 FAILED=()
 ok()   { PASS=$((PASS+1)); printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); FAILED+=("$1"); printf '  \033[31m✗ %s\033[0m %s\n' "$1" "${2:-}"; }
@@ -74,6 +78,9 @@ eq   "foreign Host → 403" "$(code -H 'Host: evil.com' "$API/health")" 403
 eq   "POST cross-origin → 403" "$(code -X POST -H 'Origin: http://evil.localhost' "$API/apps/x/stop")" 403
 eq   "SPA route → index" "$(code "http://$PANEL/apps/whatever")" 200
 eq   "unknown API → 404" "$(code "$API/nope")" 404
+eq   "API without the token → 401" "$(command curl -s -o /dev/null -w '%{http_code}' "$API/apps")" 401
+eq   "API with a wrong token → 401" "$(command curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer nope' "$API/apps")" 401
+eq   "the token file is private" "$(stat -c %a "$XDG_CONFIG_HOME/laranest/token")" 600
 SYS=$(j "$API/system")
 eq   "configured ports" "$(jq -r '"\(.http_port)/\(.https_port)"' <<<"$SYS")" "$HTTP/$HTTPS"
 eq   "proxy without errors" "$(jq -r '.proxy_error // "none"' <<<"$SYS")" none

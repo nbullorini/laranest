@@ -25,6 +25,10 @@ API="http://$E2E_PANEL/api"
 ROOT_CA="$XDG_STATE_HOME/laranest/caddy/pki/authorities/local/root.crt"
 mkdir -p "$E2E_ROOT"/{projects,logs,results} "$XDG_CONFIG_HOME/laranest"
 
+# The API needs the instance's token (the daemon creates it on first start).
+curl() { command curl -H "Authorization: Bearer $(cat "${XDG_CONFIG_HOME:-$HOME/.config}/laranest/token" 2>/dev/null)" "$@"; }
+export -f curl
+
 start_daemon() {
   curl -sf "$API/health" >/dev/null && return
   [ -f "$XDG_CONFIG_HOME/laranest/config.json" ] ||
