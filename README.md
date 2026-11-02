@@ -54,9 +54,12 @@ curl -fsSL https://github.com/nbullorini/laranest/releases/latest/download/insta
 irm https://github.com/nbullorini/laranest/releases/latest/download/install.ps1 | iex
 ```
 
-Then open **http://localhost:9150** (the installer prints the address: it
-uses the next free port if 9150 is taken, for example by a Laranest running
-inside WSL).
+Then open the panel with the link the installer prints, or run
+**`laranest open`**. The link signs that browser in: only the user running
+Laranest can use its panel, even though it listens on `localhost`, which every
+user of the machine can reach. The panel is usually on http://localhost:9150;
+Laranest uses the next free port if 9150 is taken, for example by a Laranest
+running inside WSL or on Windows.
 
 Requirements:
 
@@ -206,6 +209,7 @@ the panel stay local until the file changes, or until you save them to it.
 
 | Command | |
 |---|---|
+| `laranest open` | Open the panel in your browser, signed in |
 | `laranest status` | Service and panel status |
 | `laranest update` | Update Laranest to the latest release |
 | `laranest mcp` | MCP server (stdio) for AI assistants |

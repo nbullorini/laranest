@@ -5,6 +5,8 @@ import {
   type GlobalThemeOverrides,
 } from 'naive-ui'
 import Panel from './Panel.vue'
+import SignIn from './SignIn.vue'
+import { signedOut } from './api'
 
 const os = useOsTheme()
 const theme = computed(() => (os.value === 'dark' ? darkTheme : null))
@@ -36,7 +38,8 @@ const overrides = computed<GlobalThemeOverrides>(() => {
     <NGlobalStyle />
     <NMessageProvider :duration="5000" closable>
       <NDialogProvider>
-        <Panel />
+        <SignIn v-if="signedOut" />
+        <Panel v-else />
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>

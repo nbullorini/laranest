@@ -29,7 +29,7 @@ type Server struct {
 	updater selfupdate.Updater
 }
 
-func New(cfg config.Config, ui fs.FS, mgr *apps.Manager) *Server {
+func New(cfg config.Config, token string, ui fs.FS, mgr *apps.Manager) *Server {
 	s := &Server{cfg: cfg, ui: ui, apps: mgr, quit: make(chan struct{})}
 
 	mux := http.NewServeMux()
@@ -38,7 +38,7 @@ func New(cfg config.Config, ui fs.FS, mgr *apps.Manager) *Server {
 
 	s.http = &http.Server{
 		Addr:              cfg.PanelAddr,
-		Handler:           guard(cfg, mux),
+		Handler:           guard(cfg, token, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s

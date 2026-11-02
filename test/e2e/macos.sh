@@ -20,6 +20,10 @@ API=http://127.0.0.1:9150/api
 STATE="$HOME/.local/state/laranest"
 rm -rf "$ROOT" && mkdir -p "$APP/public"
 
+# The API needs the instance's token (the daemon creates it on first start).
+curl() { command curl -H "Authorization: Bearer $(cat "${XDG_CONFIG_HOME:-$HOME/.config}/laranest/token" 2>/dev/null)" "$@"; }
+export -f curl
+
 PASS=0 FAIL=0 FAILED=()
 ok()   { PASS=$((PASS+1)); printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); FAILED+=("$1"); printf '  \033[31m✗ %s\033[0m %s\n' "$1" "${2:-}"; }

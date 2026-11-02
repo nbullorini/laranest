@@ -1132,6 +1132,11 @@ func (m *Manager) specs(a *App, prep prepared) ([]units.Spec, error) {
 		} else {
 			s := spec("dumps", cmd...)
 			s.Env = slices.DeleteFunc(slices.Clone(env), func(e string) bool { return strings.HasPrefix(e, "VAR_DUMPER_FORMAT=") })
+			// It posts to the API: the token goes in its environment, which
+			// (unlike its arguments) other users can't see.
+			if token, err := config.Token(); err == nil {
+				s.Env = append(s.Env, "LARANEST_TOKEN="+token)
+			}
 			specs = append(specs, s)
 		}
 	}

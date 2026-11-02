@@ -57,7 +57,7 @@ $server->listen(function (Data $data, array $context) use ($html, $text, $header
     $body = json_encode($dump, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
     $ok = @file_get_contents($endpoint, false, stream_context_create(['http' => [
         'method' => 'POST',
-        'header' => "Content-Type: application/json\r\n",
+        'header' => "Content-Type: application/json\r\nAuthorization: Bearer ".getenv('LARANEST_TOKEN')."\r\n",
         'content' => $body,
         'timeout' => 5,
         'ignore_errors' => true,

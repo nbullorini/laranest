@@ -39,9 +39,10 @@ start_app. Commands run with run_command take what you would type after
 npx and node can be run. Ask the user before destructive actions (remove_app,
 stop_app on apps they use, changing .env values).`
 
-// Run serves MCP on stdio, talking to the daemon at panelAddr ("127.0.0.1:9150").
-func Run(ctx context.Context, panelAddr string) error {
-	c := &client{base: "http://" + panelAddr + "/api", http: &http.Client{Timeout: 10 * time.Minute}}
+// Run serves MCP on stdio, talking to the daemon at panelAddr ("127.0.0.1:9150")
+// with its API token.
+func Run(ctx context.Context, panelAddr, token string) error {
+	c := &client{base: "http://" + panelAddr + "/api", token: token, http: &http.Client{Timeout: 10 * time.Minute}}
 	if _, err := c.do(ctx, http.MethodGet, "/health", nil); err != nil {
 		return fmt.Errorf("Laranest is not running on %s (start it, then try again): %w", panelAddr, err)
 	}
@@ -57,8 +58,16 @@ func newServer(c *client) *mcp.Server {
 
 // client calls the daemon's JSON API.
 type client struct {
-	base string
-	http *http.Client
+	base  string
+	token string
+	http  *http.Client
+}
+
+func (c *client) send(req *http.Request) (*http.Response, error) {
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	return c.http.Do(req)
 }
 
 // apiError is an error the API returned (its message is meant for people).
@@ -80,7 +89,7 @@ func (c *client) do(ctx context.Context, method, path string, body any) (json.Ra
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +124,7 @@ func (c *client) logs(ctx context.Context, app, process string, lines int) ([]st
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return nil, err
 	}
