@@ -70,3 +70,31 @@ func TestWindowsPath(t *testing.T) {
 		t.Errorf("got %s", got)
 	}
 }
+
+func TestListeningPorts(t *testing.T) {
+	netstat := `
+Conexiones activas
+
+  Proto  Dirección local          Dirección remota        Estado           PID
+  TCP    0.0.0.0:135            0.0.0.0:0              ESCUCHANDO       2272
+  TCP    127.0.0.1:9150         0.0.0.0:0              LISTENING       17732
+  TCP    127.0.0.1:80           0.0.0.0:0              LISTENING       10892
+  TCP    127.0.0.1:80           0.0.0.0:0              LISTENING       17732
+  TCP    127.0.0.1:9151         0.0.0.0:0              LISTENING       37260
+  TCP    192.168.1.5:7000       0.0.0.0:0              LISTENING       4
+  TCP    127.0.0.1:52000        127.0.0.1:9151         ESTABLISHED     900
+  TCP    [::1]:8443             [::]:0                 LISTENING       37260
+  TCP    [::]:445               [::]:0                 LISTENING       4
+`
+	got := listeningPorts(netstat, csvPIDs("\"wslrelay.exe\",\"17732\",\"Console\",\"1\",\"14,072 KB\"\r\n", "wslrelay.exe"))
+	for _, p := range []int{135, 9151, 8443, 445} {
+		if !got[p] {
+			t.Errorf("port %d should be in use", p)
+		}
+	}
+	for _, p := range []int{9150, 80, 7000, 52000} {
+		if got[p] {
+			t.Errorf("port %d should not count (relayed to WSL, LAN address or a client socket)", p)
+		}
+	}
+}
