@@ -212,7 +212,12 @@ const rowProps = (row: Row) => ({
 .apps-table .app-cell { display: inline-flex; flex-direction: column; vertical-align: middle; line-height: 1.35; }
 .apps-table .app-id { font-weight: 600; }
 .apps-table .app-cell { max-width: 100%; min-width: 0; }
-.apps-table:not(.apps-cards) .app-cell { max-width: 300px; }
+/* The tree cell holds Naive's indent (20px) and expand placeholder (16px)
+   inline before the name: if they don't all fit, the name wraps to the next
+   line, unindented, and the app looks outside its group. Leave them room and
+   never wrap (the URL is cut with an ellipsis instead). */
+.apps-table:not(.apps-cards) td:first-child { white-space: nowrap; }
+.apps-table:not(.apps-cards) .app-cell { max-width: min(300px, calc(100% - 40px)); }
 .apps-table .link {
   color: var(--brand); text-decoration: none; display: block;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
