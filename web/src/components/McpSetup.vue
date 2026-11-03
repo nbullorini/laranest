@@ -14,9 +14,13 @@ const message = useMessage()
 const exe = computed(() => props.system?.executable || 'laranest')
 const claudeCode = computed(() => `claude mcp add -s user laranest -- ${quote(exe.value)} mcp`)
 const config = computed(() => JSON.stringify({ mcpServers: { laranest: { command: exe.value, args: ['mcp'] } } }, null, 2))
-// From AI apps running on Windows, reach the Laranest inside WSL.
+// From AI apps running on Windows, reach the Laranest inside WSL. As its
+// user: wsl.exe runs as the distro's default user otherwise, whose
+// `laranest mcp` would read that user's token and reach that user's Laranest.
 const windowsConfig = computed(() => JSON.stringify({
-  mcpServers: { laranest: { command: 'wsl.exe', args: ['-d', props.wsl?.distro || 'Ubuntu', '--', exe.value, 'mcp'] } },
+  mcpServers: { laranest: { command: 'wsl.exe', args: [
+    '-d', props.wsl?.distro || 'Ubuntu', ...(props.wsl?.user ? ['-u', props.wsl.user] : []), '--', exe.value, 'mcp',
+  ] } },
 }, null, 2))
 
 function quote(s: string) {
